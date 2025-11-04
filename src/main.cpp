@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
         const auto& market = simulation.getMarket();
         double current_price = market.getCurrentPrice();
         double price_change = market.getPriceChangePercent();
-        auto price_history = market.getRecentHistory(60);
+        auto price_history = market.getRecentHistory(200); // Increased from 60 to 200 for more history
         
         // Price display with change indicator
         Color price_change_color = price_change >= 0 ? Color::Green : Color::Red;
@@ -183,27 +183,37 @@ int main(int argc, char *argv[])
             })
         );
         
-        // Taller price graph with colored bars
-        std::vector<Element> price_bars;
+        // Taller price graph with dynamic scaling
         if (!price_history.empty()) {
-            double min_price = *std::min_element(price_history.begin(), price_history.end());
-            double max_price = *std::max_element(price_history.begin(), price_history.end());
+            // Get initial price from config for scaling reference
+            double initial_price = config.initial_price;
+            
+            // Find max price seen so far
+            double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
+            
+            // Scale from initial price to max price seen
+            // Use initial price as minimum with some downward buffer
+            double min_price = initial_price * 0.85; // 15% below initial for buffer
+            double max_price = std::max(max_price_seen * 1.15, initial_price * 1.15); // 15% above max or initial
+            
             double range = max_price - min_price;
             if (range < 1.0) range = 1.0;
             
+            // Create vertical bar chart with much taller bars
+            const int graph_height = 15; // Height in text lines
+            std::vector<Element> columns;
+            
             for (size_t i = 0; i < price_history.size(); i++) {
                 double price = price_history[i];
-                double normalized = (price - min_price) / range;
-                int bar_height = static_cast<int>(normalized * 12); // Increased from 8 to 12
-                std::string bar_char;
-                if (bar_height == 0) bar_char = "▁";
-                else if (bar_height <= 2) bar_char = "▂";
-                else if (bar_height <= 4) bar_char = "▃";
-                else if (bar_height <= 6) bar_char = "▄";
-                else if (bar_height <= 8) bar_char = "▆";
-                else bar_char = "█";
                 
-                // Color bars based on price direction
+                // Normalize price to graph height
+                double normalized = (price - min_price) / range;
+                int filled_lines = static_cast<int>(normalized * graph_height);
+                
+                // Clamp to valid range
+                filled_lines = std::max(0, std::min(graph_height, filled_lines));
+                
+                // Determine color based on price direction
                 Color bar_color = Color::Cyan;
                 if (i > 0) {
                     if (price_history[i] > price_history[i-1]) {
@@ -213,10 +223,23 @@ int main(int argc, char *argv[])
                     }
                 }
                 
-                price_bars.push_back(text(bar_char) | color(bar_color));
+                // Create vertical bar (stack of blocks)
+                std::vector<Element> vertical_blocks;
+                for (int line = 0; line < graph_height; line++) {
+                    if (graph_height - line <= filled_lines) {
+                        vertical_blocks.push_back(text("█") | color(bar_color));
+                    } else {
+                        vertical_blocks.push_back(text(" "));
+                    }
+                }
+                
+                columns.push_back(vbox(std::move(vertical_blocks)));
             }
+            
+            elements.push_back(
+                hbox(std::move(columns)) | border | flex
+            );
         }
-        elements.push_back(hbox(std::move(price_bars)) | border | size(HEIGHT, EQUAL, 10));
         elements.push_back(separator());
         
         // Trader statistics
