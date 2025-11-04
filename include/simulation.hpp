@@ -44,6 +44,9 @@ public:
     // Initialize with MPI support
     void initializeMPI(bool use_mpi = false, int rank = 0, int size = 1);
 
+    // Set time scale (multiplier for simulation speed)
+    void setTimeScale(double scale);
+
     // Run one simulation step (with order book matching)
     void step();
 

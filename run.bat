@@ -21,25 +21,28 @@ set NUM_TRADERS=12
 set DURATION=60
 set INITIAL_PRICE=100.0
 set INITIAL_CASH=10000.0
+set INITIAL_SPEED=1.0
 
 REM Check for command line arguments
 if not "%1"=="" set NUM_TRADERS=%1
 if not "%2"=="" set DURATION=%2
 if not "%3"=="" set INITIAL_PRICE=%3
 if not "%4"=="" set INITIAL_CASH=%4
+if not "%5"=="" set INITIAL_SPEED=%5
 
 echo Running simulation with parameters:
 echo   Traders: %NUM_TRADERS%
 echo   Duration: %DURATION% seconds
 echo   Initial Price: $%INITIAL_PRICE%
 echo   Initial Cash: $%INITIAL_CASH%
+echo   Time Scale: %INITIAL_SPEED%x speed
 echo.
 echo Press Ctrl+C to stop early, or 'q' in the application
 echo ================================================
 echo.
 
 REM Run the simulation
-.\build\bin\Release\tradingSim.exe -t %NUM_TRADERS% -d %DURATION% -p %INITIAL_PRICE% -c %INITIAL_CASH%
+.\build\bin\Release\tradingSim.exe -t %NUM_TRADERS% -d %DURATION% -p %INITIAL_PRICE% -c %INITIAL_CASH% -s %INITIAL_SPEED%
 
 echo.
 echo ================================================

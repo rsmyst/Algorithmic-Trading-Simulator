@@ -191,13 +191,7 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     trade.quantity = 0;
     trade.is_buy = true;
 
-    // Store price in history
-    price_history.push_back(current_price);
-    if (price_history.size() > 20)
-    {
-        price_history.erase(price_history.begin());
-    }
-
+    // Price history is managed in createOrder(), not here
     // Need at least some history for strategies
     if (price_history.size() < 5)
     {

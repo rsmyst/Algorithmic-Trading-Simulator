@@ -45,6 +45,14 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
     // Initialize logger
     logger.initialize(false, 0, 1);
 }
+
+void TradingSimulation::setTimeScale(double scale)
+{
+    if (scale <= 0.0)
+        scale = 1.0;         // Ensure positive
+    time_step = 0.1 / scale; // Base time step is 0.1, divided by scale for faster simulation
+}
+
 void TradingSimulation::initializeMPI(bool use_mpi, int rank, int size)
 {
     mpi_enabled = use_mpi;

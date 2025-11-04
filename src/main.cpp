@@ -23,6 +23,7 @@ struct Config
     double initial_price = 100.0;
     double initial_cash = 10000.0;
     int duration_seconds = 60;
+    double time_scale = 1.0;
     bool show_help = false;
 };
 
@@ -35,9 +36,10 @@ void printHelp()
     std::cout << "  -d, --duration <sec>    Simulation duration in seconds (default: 60)\n";
     std::cout << "  -p, --price <value>     Initial asset price (default: 100.0)\n";
     std::cout << "  -c, --cash <value>      Initial cash per trader (default: 10000.0)\n";
+    std::cout << "  -s, --speed <scale>     Time scale multiplier (default: 1.0, 2.0 = 2x faster)\n";
     std::cout << "  -h, --help              Show this help message\n\n";
     std::cout << "Example:\n";
-    std::cout << "  tradingSim -t 20 -d 120 -p 150.0\n\n";
+    std::cout << "  tradingSim -t 20 -d 120 -p 150.0 -s 2.0\n\n";
 }
 
 Config parseArguments(int argc, char *argv[])
@@ -69,6 +71,12 @@ Config parseArguments(int argc, char *argv[])
         {
             config.initial_cash = std::stod(argv[++i]);
         }
+        else if ((arg == "-s" || arg == "--speed") && i + 1 < argc)
+        {
+            config.time_scale = std::stod(argv[++i]);
+            if (config.time_scale <= 0.0)
+                config.time_scale = 1.0; // Ensure positive
+        }
     }
 
     return config;
@@ -87,6 +95,7 @@ int main(int argc, char *argv[])
 
     // Create simulation
     TradingSimulation simulation(config.num_traders, config.initial_price, config.initial_cash);
+    simulation.setTimeScale(config.time_scale);
 
     auto screen = ScreenInteractive::Fullscreen();
 
@@ -122,7 +131,8 @@ int main(int argc, char *argv[])
         
         // Run simulation steps
         auto step_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_update).count();
-        if (step_elapsed >= 100 && running) {
+        int step_interval = static_cast<int>(100.0 / config.time_scale);  // Scale update interval with time_scale
+        if (step_elapsed >= step_interval && running) {
             simulation.step();
             last_update = now;
         }
@@ -187,32 +197,40 @@ int main(int argc, char *argv[])
             double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
             double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
             
-            // Determine the range with initial price as reference
-            double max_price = std::max(max_price_seen, initial_price) * 1.05; // 5% above highest
-            double min_price = std::min(min_price_seen, initial_price) * 0.95; // 5% below lowest
+            // Ensure initial price is always within the range
+            max_price_seen = std::max(max_price_seen, initial_price);
+            min_price_seen = std::min(min_price_seen, initial_price);
+            
+            // Add buffer to ensure baseline is visible
+            double price_range = max_price_seen - min_price_seen;
+            if (price_range < 1.0) price_range = 1.0;
+            
+            double buffer = price_range * 0.1; // 10% buffer on each side
+            double max_price = max_price_seen + buffer;
+            double min_price = min_price_seen - buffer;
             
             double range = max_price - min_price;
             if (range < 1.0) range = 1.0;
             
-            // Calculate where the initial price baseline should be in the graph
-            double initial_price_normalized = (initial_price - min_price) / range;
-            
             // Create vertical bar chart with much taller bars
             const int graph_height = 15; // Height in text lines
+            
+            // Calculate where the initial price baseline should be in the graph (0 to graph_height-1)
+            double initial_price_normalized = (initial_price - min_price) / range;
+            int baseline_pos = static_cast<int>(initial_price_normalized * (graph_height - 1));
+            baseline_pos = std::max(0, std::min(graph_height - 1, baseline_pos)); // Keep baseline visible
+            
             std::vector<Element> columns;
             
             for (size_t i = 0; i < price_history.size(); i++) {
                 double price = price_history[i];
                 
-                // Normalize price to graph height
+                // Normalize price to graph height (0 to graph_height-1)
                 double normalized = (price - min_price) / range;
-                int filled_lines = static_cast<int>(normalized * graph_height);
+                int filled_lines = static_cast<int>(normalized * (graph_height - 1));
                 
-                // Clamp to valid range
-                filled_lines = std::max(0, std::min(graph_height, filled_lines));
-                
-                // Calculate initial price line position
-                int baseline_pos = static_cast<int>(initial_price_normalized * graph_height);
+                // Clamp to valid range [0, graph_height-1]
+                filled_lines = std::max(0, std::min(graph_height - 1, filled_lines));
                 
                 // Determine color based on price relative to initial and previous
                 Color bar_color = Color::Cyan;
@@ -231,17 +249,23 @@ int main(int argc, char *argv[])
                     }
                 }
                 
-                // Create vertical bar (stack of blocks)
+                // Create vertical column with dot at price level
                 std::vector<Element> vertical_blocks;
                 for (int line = 0; line < graph_height; line++) {
-                    int line_from_bottom = graph_height - line;
+                    int line_from_bottom = graph_height - 1 - line;
                     
                     if (line_from_bottom == baseline_pos) {
-                        // Draw the initial price baseline
-                        vertical_blocks.push_back(text("─") | color(Color::Yellow) | dim);
-                    } else if (line_from_bottom <= filled_lines) {
-                        // Draw the price bar
-                        vertical_blocks.push_back(text("█") | color(bar_color));
+                        // Always draw the baseline, but if price dot is here, show both
+                        if (line_from_bottom == filled_lines) {
+                            // Overlay: show dot with baseline underneath using different character
+                            vertical_blocks.push_back(text("◆") | color(bar_color) | bold);
+                        } else {
+                            // Just the baseline
+                            vertical_blocks.push_back(text("─") | color(Color::Yellow));
+                        }
+                    } else if (line_from_bottom == filled_lines) {
+                        // Draw a dot at the exact price level
+                        vertical_blocks.push_back(text("●") | color(bar_color));
                     } else {
                         // Empty space
                         vertical_blocks.push_back(text(" "));
