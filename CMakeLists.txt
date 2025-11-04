@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(ftxui_demo
+project(AlgorithmicTradingSimulator
   LANGUAGES CXX
   VERSION 1.0.0
 )
@@ -32,7 +32,7 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Create executable with all source files
-add_executable(ftxui_demo 
+add_executable(tradingSim 
   src/main.cpp
   src/trader.cpp
   src/market.cpp
@@ -40,7 +40,7 @@ add_executable(ftxui_demo
 )
 
 # Link FTXUI libraries and OpenMP
-target_link_libraries(ftxui_demo
+target_link_libraries(tradingSim
   PRIVATE ftxui::screen
   PRIVATE ftxui::dom
   PRIVATE ftxui::component
@@ -48,6 +48,6 @@ target_link_libraries(ftxui_demo
 )
 
 # Set output directory
-set_target_properties(ftxui_demo PROPERTIES
+set_target_properties(tradingSim PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

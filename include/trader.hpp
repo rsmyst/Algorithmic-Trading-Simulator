@@ -7,7 +7,9 @@ enum class Strategy
 {
     MOMENTUM,       // Buy when price is rising, sell when falling
     MEAN_REVERSION, // Buy when price is low, sell when high
-    RANDOM          // Random trading
+    RANDOM,         // Random trading
+    RISK_AVERSE,    // Conservative trading, small positions
+    HIGH_RISK       // Aggressive trading, large positions
 };
 
 struct Trade

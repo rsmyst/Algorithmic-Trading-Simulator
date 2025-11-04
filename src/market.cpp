@@ -3,7 +3,7 @@
 #include <algorithm>
 
 Market::Market(double initial_price)
-    : current_price(initial_price), base_price(initial_price),
+    : current_price(initial_price), previous_price(initial_price), base_price(initial_price),
       rng(std::random_device{}()), noise_dist(-0.5, 0.5),
       buy_pressure(0), sell_pressure(0)
 {
@@ -12,6 +12,9 @@ Market::Market(double initial_price)
 
 void Market::updatePrice(int buy_orders, int sell_orders)
 {
+    // Store previous price for change calculation
+    previous_price = current_price;
+
     buy_pressure += buy_orders;
     sell_pressure += sell_orders;
 

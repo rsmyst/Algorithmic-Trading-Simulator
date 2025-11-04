@@ -99,18 +99,77 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         should_sell = (decision == 2);
         break;
     }
+
+    case Strategy::RISK_AVERSE:
+    {
+        // Conservative strategy - only trade when confident
+        double mean = 0;
+        for (double p : price_history)
+        {
+            mean += p;
+        }
+        mean /= price_history.size();
+
+        // Only buy if price is significantly below mean (good deal)
+        if (current_price < mean * 0.90)
+        {
+            should_buy = true;
+        }
+        // Only sell if price is significantly above mean (good profit)
+        else if (current_price > mean * 1.10)
+        {
+            should_sell = true;
+        }
+        break;
+    }
+
+    case Strategy::HIGH_RISK:
+    {
+        // Aggressive strategy - trade frequently with larger positions
+        double recent_avg = 0;
+        int recent_count = std::min(3, static_cast<int>(price_history.size()));
+        for (int i = price_history.size() - recent_count; i < price_history.size(); i++)
+        {
+            recent_avg += price_history[i];
+        }
+        recent_avg /= recent_count;
+
+        // Buy on slight uptrend
+        if (current_price > recent_avg * 1.01)
+        {
+            should_buy = true;
+        }
+        // Sell on slight downtrend
+        else if (current_price < recent_avg * 0.99)
+        {
+            should_sell = true;
+        }
+        break;
+    }
     }
 
     // Execute decision
-    if (should_buy && cash >= current_price * 10)
+    int trade_size = 10;
+
+    // Adjust trade size based on strategy
+    if (strategy == Strategy::RISK_AVERSE)
+    {
+        trade_size = 5; // Smaller positions for conservative traders
+    }
+    else if (strategy == Strategy::HIGH_RISK)
+    {
+        trade_size = 20; // Larger positions for aggressive traders
+    }
+
+    if (should_buy && cash >= current_price * trade_size)
     {
         trade.is_buy = true;
-        trade.quantity = std::min(10, static_cast<int>(cash / current_price));
+        trade.quantity = std::min(trade_size, static_cast<int>(cash / current_price));
     }
-    else if (should_sell && holdings >= 10)
+    else if (should_sell && holdings >= trade_size)
     {
         trade.is_buy = false;
-        trade.quantity = std::min(10, holdings);
+        trade.quantity = std::min(trade_size, holdings);
     }
 
     return trade;
@@ -152,6 +211,10 @@ std::string Trader::getStrategyName() const
         return "Mean Reversion";
     case Strategy::RANDOM:
         return "Random";
+    case Strategy::RISK_AVERSE:
+        return "Risk Averse";
+    case Strategy::HIGH_RISK:
+        return "High Risk";
     default:
         return "Unknown";
     }

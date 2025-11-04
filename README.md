@@ -1,4 +1,4 @@
-# Algorithmic Trading Simulation
+# Algorithmic Trading Simulator
 
 A C++ TUI (Terminal User Interface) program that simulates an algorithmic trading environment with multiple trader agents using different strategies. The simulation leverages **OpenMP** for parallel processing to enable concurrent trader decision-making.
 
@@ -6,10 +6,12 @@ A C++ TUI (Terminal User Interface) program that simulates an algorithmic tradin
 
 ✨ **Multi-Agent Trading System**
 
-- Multiple trader agents with different strategies:
+- Multiple trader agents with five different strategies:
   - **Momentum Trading**: Buys when prices are trending up, sells when trending down
   - **Mean Reversion**: Buys when prices are below average, sells when above average
-  - **Random Trading**: Makes random trading decisions
+  - **Random Trading**: Makes random trading decisions for baseline comparison
+  - **Risk Averse**: Conservative strategy with smaller positions, only trades on strong signals
+  - **High Risk**: Aggressive strategy with larger positions, trades frequently on minor trends
 
 🚀 **Parallel Processing**
 
@@ -19,7 +21,9 @@ A C++ TUI (Terminal User Interface) program that simulates an algorithmic tradin
 📊 **Real-Time Visualization**
 
 - Beautiful TUI built with FTXUI library
-- Live price charts with htop-style graphs
+- Live price charts with htop-style graphs (10 lines tall)
+- Color-coded price bars (green for rising, red for falling, cyan for stable)
+- Real-time price change percentage indicator with up/down arrows
 - Real-time trader statistics and rankings
 - Market statistics and analytics
 
@@ -34,7 +38,8 @@ A C++ TUI (Terminal User Interface) program that simulates an algorithmic tradin
 - Net worth tracking for each trader
 - Profit/Loss calculations
 - Trade execution counts
-- Final rankings and detailed statistics
+- Detailed final statistics sorted by trader ID
+- Maximum profit and maximum loss tracking across all traders
 
 ## Requirements
 
@@ -45,29 +50,27 @@ A C++ TUI (Terminal User Interface) program that simulates an algorithmic tradin
 
 ## Building the Project
 
-### Using PowerShell (Windows)
+### Quick Start (Windows)
 
-```powershell
-# Build and run with default parameters
-.\run_simulation.ps1
-
-# Build and run with custom parameters
-.\run_simulation.ps1 -Traders 20 -Duration 120 -Price 150.0 -Cash 15000.0
-```
-
-### Using Batch Script (Windows)
+**Build the project:**
 
 ```cmd
-# Build and run with default parameters
-run_simulation.bat
+build.bat
+```
 
-# Build and run with custom parameters (traders, duration, price, cash)
-run_simulation.bat 20 120 150.0 15000.0
+**Run the simulation:**
+
+```cmd
+# Run with default parameters
+run.bat
+
+# Run with custom parameters (traders, duration, price, cash)
+run.bat 20 120 150.0 15000.0
 ```
 
 ### Manual Build
 
-```powershell
+```cmd
 # Create build directory
 mkdir build
 cd build
@@ -80,7 +83,7 @@ cmake --build . --config Release
 
 # Run
 cd ..
-.\build\bin\Release\ftxui_demo.exe
+.\build\bin\Release\tradingSim.exe
 ```
 
 ## Usage
@@ -88,7 +91,7 @@ cd ..
 ### Command Line Options
 
 ```
-Usage: ftxui_demo [options]
+Usage: tradingSim [options]
 
 Options:
   -t, --traders <num>     Number of trader agents (default: 12)
@@ -98,8 +101,8 @@ Options:
   -h, --help              Show help message
 
 Examples:
-  ftxui_demo -t 20 -d 120 -p 150.0
-  ftxui_demo --traders 30 --duration 180
+  tradingSim -t 20 -d 120 -p 150.0
+  tradingSim --traders 30 --duration 180
 ```
 
 ### During Simulation
@@ -107,7 +110,8 @@ Examples:
 - **Press 'q'**: Stop the simulation and view final results
 - The simulation automatically stops after the specified duration
 - Live updates show:
-  - Current market price with historical graph
+  - Current market price with percentage change (▲ green for up, ▼ red for down)
+  - Tall historical price graph (10 lines) with color-coded bars
   - Top 5 traders by net worth
   - Market statistics (total trades, volume, volatility)
   - Time remaining
@@ -117,12 +121,15 @@ Examples:
 The program displays detailed final results including:
 
 - Simulation duration and statistics
-- Complete trader rankings
+- Complete trader rankings **sorted by trader ID** (ascending order)
 - Individual trader performance:
   - Net worth
   - Profit/Loss
   - Number of trades executed
   - Current holdings and cash
+- **Performance Summary**:
+  - Maximum profit earned by any trader (with strategy name)
+  - Maximum loss incurred by any trader (with strategy name)
 
 ## Project Structure
 
@@ -138,8 +145,8 @@ Alg Trad/
 │   ├── market.cpp         # Market implementation
 │   └── simulation.cpp     # Simulation implementation
 ├── CMakeLists.txt         # CMake configuration
-├── run_simulation.ps1     # PowerShell build/run script
-├── run_simulation.bat     # Batch build/run script
+├── build.bat              # Build script (compiles project)
+├── run.bat                # Run script (executes simulation)
 └── README.md
 ```
 
@@ -155,11 +162,14 @@ Alg Trad/
 
 3. **Trading Strategies**:
 
-   - **Momentum**: Analyzes recent vs older price averages, buys on uptrends
-   - **Mean Reversion**: Compares current price to historical mean, exploits deviations
-   - **Random**: Makes random buy/sell decisions for baseline comparison
+   - **Momentum**: Analyzes recent vs older price averages, buys on uptrends (standard 10-share positions)
+   - **Mean Reversion**: Compares current price to historical mean, exploits deviations (standard 10-share positions)
+   - **Random**: Makes random buy/sell decisions for baseline comparison (standard 10-share positions)
+   - **Risk Averse**: Conservative approach, only trades on strong 10% deviations, uses smaller 5-share positions
+   - **High Risk**: Aggressive approach, trades on 1% price movements, uses larger 20-share positions
 
 4. **Market Dynamics**: Price changes based on:
+
    - Net buy/sell pressure from traders
    - Random market noise for volatility
    - Price bounds to prevent unrealistic values
@@ -169,7 +179,8 @@ Alg Trad/
 - OpenMP parallelizes trader decision-making across available CPU cores
 - UI refresh rate: 50ms (20 FPS)
 - Simulation step rate: 100ms (10 steps/second)
-- Graph displays last 60 data points
+- Graph displays last 60 data points with 10-line height
+- Color-coded bars: Green (price rising), Red (price falling), Cyan (stable)
 
 ## License
 

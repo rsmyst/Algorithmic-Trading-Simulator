@@ -28,8 +28,8 @@ struct Config
 
 void printHelp()
 {
-    std::cout << "Algorithmic Trading Simulation\n\n";
-    std::cout << "Usage: ftxui_demo [options]\n\n";
+    std::cout << "Algorithmic Trading Simulator\n\n";
+    std::cout << "Usage: tradingSim [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  -t, --traders <num>     Number of trader agents (default: 12)\n";
     std::cout << "  -d, --duration <sec>    Simulation duration in seconds (default: 60)\n";
@@ -37,7 +37,7 @@ void printHelp()
     std::cout << "  -c, --cash <value>      Initial cash per trader (default: 10000.0)\n";
     std::cout << "  -h, --help              Show this help message\n\n";
     std::cout << "Example:\n";
-    std::cout << "  ftxui_demo -t 20 -d 120 -p 150.0\n\n";
+    std::cout << "  tradingSim -t 20 -d 120 -p 150.0\n\n";
 }
 
 Config parseArguments(int argc, char *argv[])
@@ -162,17 +162,28 @@ int main(int argc, char *argv[])
         // Market price graph
         const auto& market = simulation.getMarket();
         double current_price = market.getCurrentPrice();
+        double price_change = market.getPriceChangePercent();
         auto price_history = market.getRecentHistory(60);
+        
+        // Price display with change indicator
+        Color price_change_color = price_change >= 0 ? Color::Green : Color::Red;
+        std::string change_indicator = price_change >= 0 ? "▲" : "▼";
+        std::stringstream price_ss;
+        price_ss << std::fixed << std::setprecision(2);
+        price_ss << (price_change >= 0 ? "+" : "") << price_change << "%";
         
         elements.push_back(
             hbox({
                 text("Current Price: ") | bold,
                 text("$" + std::to_string(static_cast<int>(current_price))) | 
                     color(Color::GreenLight) | bold,
+                text("  "),
+                text(change_indicator + " " + price_ss.str()) | 
+                    color(price_change_color) | bold,
             })
         );
         
-        // Price graph
+        // Taller price graph with colored bars
         std::vector<Element> price_bars;
         if (!price_history.empty()) {
             double min_price = *std::min_element(price_history.begin(), price_history.end());
@@ -180,20 +191,32 @@ int main(int argc, char *argv[])
             double range = max_price - min_price;
             if (range < 1.0) range = 1.0;
             
-            for (double price : price_history) {
+            for (size_t i = 0; i < price_history.size(); i++) {
+                double price = price_history[i];
                 double normalized = (price - min_price) / range;
-                int bar_height = static_cast<int>(normalized * 8);
+                int bar_height = static_cast<int>(normalized * 12); // Increased from 8 to 12
                 std::string bar_char;
                 if (bar_height == 0) bar_char = "▁";
                 else if (bar_height <= 2) bar_char = "▂";
-                else if (bar_height <= 4) bar_char = "▄";
-                else if (bar_height <= 6) bar_char = "▆";
+                else if (bar_height <= 4) bar_char = "▃";
+                else if (bar_height <= 6) bar_char = "▄";
+                else if (bar_height <= 8) bar_char = "▆";
                 else bar_char = "█";
                 
-                price_bars.push_back(text(bar_char) | color(Color::Cyan));
+                // Color bars based on price direction
+                Color bar_color = Color::Cyan;
+                if (i > 0) {
+                    if (price_history[i] > price_history[i-1]) {
+                        bar_color = Color::Green;
+                    } else if (price_history[i] < price_history[i-1]) {
+                        bar_color = Color::Red;
+                    }
+                }
+                
+                price_bars.push_back(text(bar_char) | color(bar_color));
             }
         }
-        elements.push_back(hbox(std::move(price_bars)) | border);
+        elements.push_back(hbox(std::move(price_bars)) | border | size(HEIGHT, EQUAL, 10));
         elements.push_back(separator());
         
         // Trader statistics
@@ -281,10 +304,10 @@ int main(int argc, char *argv[])
     std::cout << "Total Trades: " << stats.total_trades << "\n";
     std::cout << "Total Volume: $" << std::fixed << std::setprecision(2) << stats.total_volume << "\n";
     std::cout << "Average Price: $" << stats.avg_price << "\n";
-    std::cout << "Price Volatility: $" << stats.price_volatility << "\n\n";
+    std::cout << "Price Volatility: $" << stats.price_volatility << "\n";
 
     // Final trader rankings
-    std::cout << "=== Final Trader Rankings ===\n\n";
+    std::cout << "\n=== Final Trader Rankings (By ID) ===\n\n";
 
     const auto &traders = simulation.getTraders();
     std::vector<const Trader *> sorted_traders;
@@ -294,19 +317,42 @@ int main(int argc, char *argv[])
     }
 
     double final_price = simulation.getMarket().getCurrentPrice();
+
+    // Sort by trader ID
     std::sort(sorted_traders.begin(), sorted_traders.end(),
-              [final_price](const Trader *a, const Trader *b)
+              [](const Trader *a, const Trader *b)
               {
-                  return a->getNetWorth(final_price) > b->getNetWorth(final_price);
+                  return a->getId() < b->getId();
               });
 
-    for (int i = 0; i < sorted_traders.size(); i++)
+    // Calculate max profit and loss with strategy names
+    double max_profit = -999999.0;
+    double max_loss = 999999.0;
+    std::string max_profit_strategy = "";
+    std::string max_loss_strategy = "";
+
+    for (const auto *t : sorted_traders)
+    {
+        double profit = t->getNetWorth(final_price) - config.initial_cash;
+        if (profit > max_profit)
+        {
+            max_profit = profit;
+            max_profit_strategy = t->getStrategyName();
+        }
+        if (profit < max_loss)
+        {
+            max_loss = profit;
+            max_loss_strategy = t->getStrategyName();
+        }
+    }
+
+    for (size_t i = 0; i < sorted_traders.size(); i++)
     {
         const Trader *t = sorted_traders[i];
         double net_worth = t->getNetWorth(final_price);
         double profit = net_worth - config.initial_cash;
 
-        std::cout << (i + 1) << ". Trader " << t->getId()
+        std::cout << "Trader " << t->getId()
                   << " [" << t->getStrategyName() << "]\n";
         std::cout << "   Net Worth: $" << std::fixed << std::setprecision(2) << net_worth << "\n";
         std::cout << "   Profit/Loss: " << (profit >= 0 ? "+" : "") << "$" << profit << "\n";
@@ -314,6 +360,13 @@ int main(int argc, char *argv[])
         std::cout << "   Holdings: " << t->getHoldings() << " shares\n";
         std::cout << "   Cash: $" << t->getCash() << "\n\n";
     }
+
+    // Display max profit and loss with strategy names
+    std::cout << "=== Performance Summary ===\n\n";
+    std::cout << "Maximum Profit: " << (max_profit >= 0 ? "+" : "") << "$" << std::fixed << std::setprecision(2) << max_profit;
+    std::cout << " [" << max_profit_strategy << "]\n";
+    std::cout << "Maximum Loss: " << (max_loss >= 0 ? "+" : "") << "$" << max_loss;
+    std::cout << " [" << max_loss_strategy << "]\n\n";
 
     return 0;
 }

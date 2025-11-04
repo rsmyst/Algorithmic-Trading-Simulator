@@ -7,6 +7,7 @@ class Market
 {
 private:
     double current_price;
+    double previous_price;
     double base_price;
     std::vector<double> price_history;
     std::mt19937 rng;
@@ -23,6 +24,14 @@ public:
 
     // Get current price
     double getCurrentPrice() const { return current_price; }
+
+    // Get price change percentage
+    double getPriceChangePercent() const
+    {
+        if (previous_price == 0)
+            return 0;
+        return ((current_price - previous_price) / previous_price) * 100.0;
+    }
 
     // Get price history
     const std::vector<double> &getPriceHistory() const { return price_history; }

@@ -11,12 +11,17 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
     for (int i = 0; i < num_traders; i++)
     {
         Strategy strat;
-        if (i % 3 == 0)
+        int strategy_type = i % 5;
+        if (strategy_type == 0)
             strat = Strategy::MOMENTUM;
-        else if (i % 3 == 1)
+        else if (strategy_type == 1)
             strat = Strategy::MEAN_REVERSION;
-        else
+        else if (strategy_type == 2)
             strat = Strategy::RANDOM;
+        else if (strategy_type == 3)
+            strat = Strategy::RISK_AVERSE;
+        else
+            strat = Strategy::HIGH_RISK;
 
         traders.push_back(std::make_unique<Trader>(i, strat, initial_cash));
     }
