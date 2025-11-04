@@ -94,13 +94,8 @@ int main(int argc, char *argv[])
     auto start_time = std::chrono::steady_clock::now();
     auto last_update = std::chrono::steady_clock::now();
 
-    // Create quit button
-    auto quit_button = Button("Stop Simulation (or press 'q')", [&]
-                              { 
-        running = false;
-        screen.ExitLoopClosure()(); });
-
-    auto container = Container::Vertical({quit_button});
+    // Create empty container for keyboard event handling only
+    auto container = Container::Vertical({});
 
     // Handle keyboard events
     container |= CatchEvent([&](Event event)
@@ -188,16 +183,19 @@ int main(int argc, char *argv[])
             // Get initial price from config for scaling reference
             double initial_price = config.initial_price;
             
-            // Find max price seen so far
+            // Find actual min and max prices seen
             double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
+            double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
             
-            // Scale from initial price to max price seen
-            // Use initial price as minimum with some downward buffer
-            double min_price = initial_price * 0.85; // 15% below initial for buffer
-            double max_price = std::max(max_price_seen * 1.15, initial_price * 1.15); // 15% above max or initial
+            // Determine the range with initial price as reference
+            double max_price = std::max(max_price_seen, initial_price) * 1.05; // 5% above highest
+            double min_price = std::min(min_price_seen, initial_price) * 0.95; // 5% below lowest
             
             double range = max_price - min_price;
             if (range < 1.0) range = 1.0;
+            
+            // Calculate where the initial price baseline should be in the graph
+            double initial_price_normalized = (initial_price - min_price) / range;
             
             // Create vertical bar chart with much taller bars
             const int graph_height = 15; // Height in text lines
@@ -213,22 +211,39 @@ int main(int argc, char *argv[])
                 // Clamp to valid range
                 filled_lines = std::max(0, std::min(graph_height, filled_lines));
                 
-                // Determine color based on price direction
+                // Calculate initial price line position
+                int baseline_pos = static_cast<int>(initial_price_normalized * graph_height);
+                
+                // Determine color based on price relative to initial and previous
                 Color bar_color = Color::Cyan;
+                if (price > initial_price) {
+                    bar_color = Color::Green; // Above initial price
+                } else if (price < initial_price) {
+                    bar_color = Color::Red; // Below initial price
+                }
+                
+                // Override with direction color if recent movement is significant
                 if (i > 0) {
-                    if (price_history[i] > price_history[i-1]) {
-                        bar_color = Color::Green;
-                    } else if (price_history[i] < price_history[i-1]) {
-                        bar_color = Color::Red;
+                    if (price_history[i] > price_history[i-1] * 1.001) {
+                        bar_color = Color::GreenLight;
+                    } else if (price_history[i] < price_history[i-1] * 0.999) {
+                        bar_color = Color::RedLight;
                     }
                 }
                 
                 // Create vertical bar (stack of blocks)
                 std::vector<Element> vertical_blocks;
                 for (int line = 0; line < graph_height; line++) {
-                    if (graph_height - line <= filled_lines) {
+                    int line_from_bottom = graph_height - line;
+                    
+                    if (line_from_bottom == baseline_pos) {
+                        // Draw the initial price baseline
+                        vertical_blocks.push_back(text("─") | color(Color::Yellow) | dim);
+                    } else if (line_from_bottom <= filled_lines) {
+                        // Draw the price bar
                         vertical_blocks.push_back(text("█") | color(bar_color));
                     } else {
+                        // Empty space
                         vertical_blocks.push_back(text(" "));
                     }
                 }
@@ -240,6 +255,85 @@ int main(int argc, char *argv[])
                 hbox(std::move(columns)) | border | flex
             );
         }
+        elements.push_back(separator());
+        
+        // Side-by-side layout: Order Book on left, Statistics on right
+        const auto& order_book = simulation.getOrderBook();
+        auto buy_depth = order_book.getBuyDepth(5);
+        auto sell_depth = order_book.getSellDepth(5);
+        auto stats = simulation.getStats();
+        
+        elements.push_back(
+            hbox({
+                // Left side: Order Book
+                vbox({
+                    text("Order Book") | bold | color(Color::Yellow),
+                    hbox({
+                        text("Bid: $" + std::to_string(static_cast<int>(order_book.getBestBid()))),
+                        text(" | "),
+                        text("Ask: $" + std::to_string(static_cast<int>(order_book.getBestAsk()))),
+                    }) | color(Color::Cyan),
+                    hbox({
+                        text("Spread: $" + std::to_string(static_cast<int>(order_book.getSpread()))),
+                        text(" | "),
+                        text("Pending: " + std::to_string(stats.pending_buy_orders + stats.pending_sell_orders)),
+                    }),
+                    separator(),
+                    hbox({
+                        // Buy side
+                        vbox({
+                            text("Buy Side") | bold | color(Color::Green) | center,
+                            separator(),
+                            vbox([&]() {
+                                std::vector<Element> buy_elements;
+                                if (buy_depth.empty()) {
+                                    buy_elements.push_back(text("No orders") | dim | center);
+                                } else {
+                                    for (const auto& [price, qty] : buy_depth) {
+                                        std::stringstream depth_ss;
+                                        depth_ss << std::fixed << std::setprecision(2);
+                                        depth_ss << "$" << price << " x" << qty;
+                                        buy_elements.push_back(text(depth_ss.str()) | color(Color::GreenLight));
+                                    }
+                                }
+                                return buy_elements;
+                            }())
+                        }) | flex | border,
+                        // Sell side
+                        vbox({
+                            text("Sell Side") | bold | color(Color::Red) | center,
+                            separator(),
+                            vbox([&]() {
+                                std::vector<Element> sell_elements;
+                                if (sell_depth.empty()) {
+                                    sell_elements.push_back(text("No orders") | dim | center);
+                                } else {
+                                    for (const auto& [price, qty] : sell_depth) {
+                                        std::stringstream depth_ss;
+                                        depth_ss << std::fixed << std::setprecision(2);
+                                        depth_ss << "$" << price << " x" << qty;
+                                        sell_elements.push_back(text(depth_ss.str()) | color(Color::RedLight));
+                                    }
+                                }
+                                return sell_elements;
+                            }())
+                        }) | flex | border
+                    })
+                }) | flex,
+                
+                separator(),
+                
+                // Right side: Statistics
+                vbox({
+                    text("Market Statistics") | bold | color(Color::Yellow),
+                    text("Total Trades: " + std::to_string(stats.total_trades)),
+                    text("Total Volume: $" + std::to_string(static_cast<int>(stats.total_volume))),
+                    text("Avg Price: $" + std::to_string(static_cast<int>(stats.avg_price))),
+                    text("Volatility: $" + std::to_string(static_cast<int>(stats.price_volatility))),
+                }) | flex
+            })
+        );
+        
         elements.push_back(separator());
         
         // Trader statistics
@@ -271,34 +365,17 @@ int main(int argc, char *argv[])
             trader_info << " | Profit: " << (profit >= 0 ? "+" : "") << "$" << profit;
             trader_info << " | Trades: " << t->getTradesExecuted();
             
+            // Add technical indicators for advanced strategies
+            if (t->getStrategyName().find("RSI") != std::string::npos || 
+                t->getStrategyName().find("MACD") != std::string::npos ||
+                t->getStrategyName().find("Multi") != std::string::npos) {
+                trader_info << " | RSI: " << std::fixed << std::setprecision(1) << t->getLastRSI();
+            }
+            
             elements.push_back(
                 text(trader_info.str()) | color(profit_color)
             );
         }
-        elements.push_back(separator());
-        
-        // Overall statistics
-        auto stats = simulation.getStats();
-        elements.push_back(text("Market Statistics") | bold | color(Color::Yellow));
-        elements.push_back(
-            text("Total Trades: " + std::to_string(stats.total_trades))
-        );
-        elements.push_back(
-            text("Total Volume: $" + std::to_string(static_cast<int>(stats.total_volume)))
-        );
-        elements.push_back(
-            text("Avg Trade Price: $" + std::to_string(static_cast<int>(stats.avg_price)))
-        );
-        elements.push_back(
-            text("Price Volatility: $" + std::to_string(static_cast<int>(stats.price_volatility)))
-        );
-        
-        elements.push_back(separator());
-        elements.push_back(quit_button->Render() | center);
-        elements.push_back(separator());
-        elements.push_back(
-            text("Press 'q' to stop | OpenMP enabled for parallel trader decisions") | dim | center
-        );
         
         return vbox(std::move(elements)) | border; });
 
@@ -328,6 +405,15 @@ int main(int argc, char *argv[])
     std::cout << "Total Volume: $" << std::fixed << std::setprecision(2) << stats.total_volume << "\n";
     std::cout << "Average Price: $" << stats.avg_price << "\n";
     std::cout << "Price Volatility: $" << stats.price_volatility << "\n";
+    std::cout << "Final Spread: $" << stats.spread << "\n";
+    std::cout << "Pending Buy Orders: " << stats.pending_buy_orders << "\n";
+    std::cout << "Pending Sell Orders: " << stats.pending_sell_orders << "\n";
+
+    // Flush and export logs
+    std::cout << "\nExporting logs...\n";
+    simulation.getLogger().flush();
+    simulation.getLogger().exportToJSON("simulation_summary.json");
+    std::cout << "Logs saved to 'logs' directory\n";
 
     // Final trader rankings
     std::cout << "\n=== Final Trader Rankings (By ID) ===\n\n";

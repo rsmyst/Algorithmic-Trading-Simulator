@@ -1,11 +1,184 @@
 #include "../include/trader.hpp"
 #include <cmath>
 #include <algorithm>
+#include <numeric>
+#include <omp.h>
+
+// Technical Indicators Implementation
+
+double TechnicalIndicators::calculateSMA(const std::vector<double> &prices, int period)
+{
+    if (prices.size() < period)
+        return 0.0;
+
+    double sum = 0.0;
+#pragma omp parallel for reduction(+ : sum) if (period > 50)
+    for (int i = prices.size() - period; i < prices.size(); i++)
+    {
+        sum += prices[i];
+    }
+
+    return sum / period;
+}
+
+double TechnicalIndicators::calculateEMA(const std::vector<double> &prices, int period)
+{
+    if (prices.size() < period)
+        return 0.0;
+
+    double multiplier = 2.0 / (period + 1);
+    double ema = calculateSMA(prices, period);
+
+    for (int i = prices.size() - period + 1; i < prices.size(); i++)
+    {
+        ema = (prices[i] - ema) * multiplier + ema;
+    }
+
+    return ema;
+}
+
+double TechnicalIndicators::calculateRSI(const std::vector<double> &prices, int period)
+{
+    if (prices.size() < period + 1)
+        return 50.0;
+
+    std::vector<double> gains, losses;
+
+    for (int i = prices.size() - period; i < prices.size(); i++)
+    {
+        double change = prices[i] - prices[i - 1];
+        if (change > 0)
+        {
+            gains.push_back(change);
+            losses.push_back(0);
+        }
+        else
+        {
+            gains.push_back(0);
+            losses.push_back(-change);
+        }
+    }
+
+    double avg_gain = 0.0, avg_loss = 0.0;
+
+#pragma omp parallel sections
+    {
+#pragma omp section
+        {
+            avg_gain = std::accumulate(gains.begin(), gains.end(), 0.0) / period;
+        }
+#pragma omp section
+        {
+            avg_loss = std::accumulate(losses.begin(), losses.end(), 0.0) / period;
+        }
+    }
+
+    if (avg_loss == 0.0)
+        return 100.0;
+
+    double rs = avg_gain / avg_loss;
+    double rsi = 100.0 - (100.0 / (1.0 + rs));
+
+    return rsi;
+}
+
+std::tuple<double, double, double> TechnicalIndicators::calculateMACD(
+    const std::vector<double> &prices,
+    int fast_period,
+    int slow_period,
+    int signal_period)
+{
+    if (prices.size() < slow_period)
+    {
+        return {0.0, 0.0, 0.0};
+    }
+
+    double fast_ema = 0.0, slow_ema = 0.0;
+
+// Parallel EMA calculation
+#pragma omp parallel sections
+    {
+#pragma omp section
+        {
+            fast_ema = calculateEMA(prices, fast_period);
+        }
+#pragma omp section
+        {
+            slow_ema = calculateEMA(prices, slow_period);
+        }
+    }
+
+    double macd_line = fast_ema - slow_ema;
+
+    // Calculate signal line (EMA of MACD)
+    // For simplicity, use a simple moving average of recent MACD values
+    double signal_line = macd_line * 0.9; // Simplified
+
+    double histogram = macd_line - signal_line;
+
+    return {macd_line, signal_line, histogram};
+}
+
+std::tuple<double, double, double> TechnicalIndicators::calculateBollingerBands(
+    const std::vector<double> &prices,
+    int period,
+    double std_dev)
+{
+    if (prices.size() < period)
+    {
+        return {0.0, 0.0, 0.0};
+    }
+
+    double sma = calculateSMA(prices, period);
+
+    // Calculate standard deviation
+    double variance = 0.0;
+#pragma omp parallel for reduction(+ : variance) if (period > 50)
+    for (int i = prices.size() - period; i < prices.size(); i++)
+    {
+        double diff = prices[i] - sma;
+        variance += diff * diff;
+    }
+
+    double std = std::sqrt(variance / period);
+
+    double upper = sma + (std_dev * std);
+    double lower = sma - (std_dev * std);
+
+    return {upper, sma, lower};
+}
+
+void TechnicalIndicators::calculateAllIndicators(
+    const std::vector<double> &prices,
+    double &rsi,
+    std::tuple<double, double, double> &macd,
+    std::tuple<double, double, double> &bollinger)
+{
+// Parallel computation of all indicators
+#pragma omp parallel sections
+    {
+#pragma omp section
+        {
+            rsi = calculateRSI(prices);
+        }
+#pragma omp section
+        {
+            macd = calculateMACD(prices);
+        }
+#pragma omp section
+        {
+            bollinger = calculateBollingerBands(prices);
+        }
+    }
+}
+
+// Trader Implementation
 
 Trader::Trader(int trader_id, Strategy strat, double initial_cash)
     : id(trader_id), strategy(strat), cash(initial_cash),
       holdings(0), total_profit(0), trades_executed(0),
-      rng(std::random_device{}())
+      rng(std::random_device{}()),
+      last_rsi(50.0), last_macd(0.0), last_bollinger_upper(0.0), last_bollinger_lower(0.0)
 {
 }
 
@@ -146,6 +319,90 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         }
         break;
     }
+
+    case Strategy::RSI_BASED:
+    {
+        updateIndicators();
+        // Buy when RSI < 30 (oversold)
+        if (last_rsi < 30)
+        {
+            should_buy = true;
+        }
+        // Sell when RSI > 70 (overbought)
+        else if (last_rsi > 70)
+        {
+            should_sell = true;
+        }
+        break;
+    }
+
+    case Strategy::MACD_BASED:
+    {
+        updateIndicators();
+        auto [macd_line, signal_line, histogram] = TechnicalIndicators::calculateMACD(price_history);
+
+        // Buy when MACD crosses above signal line
+        if (histogram > 0 && last_macd <= 0)
+        {
+            should_buy = true;
+        }
+        // Sell when MACD crosses below signal line
+        else if (histogram < 0 && last_macd >= 0)
+        {
+            should_sell = true;
+        }
+        last_macd = histogram;
+        break;
+    }
+
+    case Strategy::BOLLINGER:
+    {
+        updateIndicators();
+        // Buy when price is below lower band
+        if (current_price < last_bollinger_lower)
+        {
+            should_buy = true;
+        }
+        // Sell when price is above upper band
+        else if (current_price > last_bollinger_upper)
+        {
+            should_sell = true;
+        }
+        break;
+    }
+
+    case Strategy::MULTI_INDICATOR:
+    {
+        updateIndicators();
+        int buy_signals = 0;
+        int sell_signals = 0;
+
+        // RSI signals
+        if (last_rsi < 35)
+            buy_signals++;
+        if (last_rsi > 65)
+            sell_signals++;
+
+        // Bollinger signals
+        if (current_price < last_bollinger_lower)
+            buy_signals++;
+        if (current_price > last_bollinger_upper)
+            sell_signals++;
+
+        // MACD signals
+        auto [macd_line, signal_line, histogram] = TechnicalIndicators::calculateMACD(price_history);
+        if (histogram > 0)
+            buy_signals++;
+        if (histogram < 0)
+            sell_signals++;
+
+        // Need at least 2 signals to trade
+        if (buy_signals >= 2)
+            should_buy = true;
+        if (sell_signals >= 2)
+            should_sell = true;
+        break;
+    }
     }
 
     // Execute decision
@@ -173,6 +430,103 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     }
 
     return trade;
+}
+
+TraderOrder Trader::createOrder(double current_price, double timestamp)
+{
+    TraderOrder order;
+    order.trader_id = id;
+    order.timestamp = timestamp;
+    order.quantity = 0;
+    order.is_buy = true;
+
+    // Store price in history
+    price_history.push_back(current_price);
+    if (price_history.size() > 50) // Increased history for technical indicators
+    {
+        price_history.erase(price_history.begin());
+    }
+
+    // Need sufficient history (reduced requirement)
+    if (price_history.size() < 3)
+    {
+        return order;
+    } // Use makeDecision logic to determine order
+    Trade trade = makeDecision(current_price, timestamp);
+
+    if (trade.quantity > 0)
+    {
+        order.is_buy = trade.is_buy;
+        order.quantity = trade.quantity;
+
+        // Set limit price with wider offset to ensure matching
+        if (order.is_buy)
+        {
+            // Buy at slightly above current price to ensure matching
+            order.price = current_price * 1.005; // 0.5% above market
+        }
+        else
+        {
+            // Sell at slightly below current price to ensure matching
+            order.price = current_price * 0.995; // 0.5% below market
+        }
+    }
+
+    return order;
+}
+
+void Trader::executeOrder(bool is_buy, double price, int quantity)
+{
+    if (quantity == 0)
+        return;
+
+    if (is_buy)
+    {
+        double cost = price * quantity;
+        if (cash >= cost)
+        {
+            cash -= cost;
+            holdings += quantity;
+            trades_executed++;
+        }
+    }
+    else
+    {
+        if (holdings >= quantity)
+        {
+            cash += price * quantity;
+            holdings -= quantity;
+            trades_executed++;
+        }
+    }
+}
+
+void Trader::updateIndicators()
+{
+    if (price_history.size() < 14)
+        return;
+
+    // Parallel update of technical indicators
+    std::tuple<double, double, double> macd, bollinger;
+
+#pragma omp parallel sections
+    {
+#pragma omp section
+        {
+            last_rsi = TechnicalIndicators::calculateRSI(price_history);
+        }
+#pragma omp section
+        {
+            macd = TechnicalIndicators::calculateMACD(price_history);
+            last_macd = std::get<2>(macd); // histogram
+        }
+#pragma omp section
+        {
+            bollinger = TechnicalIndicators::calculateBollingerBands(price_history);
+            last_bollinger_upper = std::get<0>(bollinger);
+            last_bollinger_lower = std::get<2>(bollinger);
+        }
+    }
 }
 
 void Trader::executeTrade(const Trade &trade)
@@ -215,6 +569,14 @@ std::string Trader::getStrategyName() const
         return "Risk Averse";
     case Strategy::HIGH_RISK:
         return "High Risk";
+    case Strategy::RSI_BASED:
+        return "RSI-Based";
+    case Strategy::MACD_BASED:
+        return "MACD-Based";
+    case Strategy::BOLLINGER:
+        return "Bollinger Bands";
+    case Strategy::MULTI_INDICATOR:
+        return "Multi-Indicator";
     default:
         return "Unknown";
     }

@@ -14,6 +14,16 @@ if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
 endif()
 
+# Find MPI (optional)
+find_package(MPI)
+if(MPI_CXX_FOUND)
+    message(STATUS "MPI found: ${MPI_CXX_VERSION}")
+    set(MPI_ENABLED TRUE)
+else()
+    message(STATUS "MPI not found - building without MPI support")
+    set(MPI_ENABLED FALSE)
+endif()
+
 # Fetch FTXUI library
 include(FetchContent)
 
@@ -37,6 +47,8 @@ add_executable(tradingSim
   src/trader.cpp
   src/market.cpp
   src/simulation.cpp
+  src/order_book.cpp
+  src/logger.cpp
 )
 
 # Link FTXUI libraries and OpenMP
@@ -46,6 +58,12 @@ target_link_libraries(tradingSim
   PRIVATE ftxui::component
   PRIVATE OpenMP::OpenMP_CXX
 )
+
+# Link MPI if available
+if(MPI_ENABLED)
+    target_link_libraries(tradingSim PRIVATE MPI::MPI_CXX)
+    target_compile_definitions(tradingSim PRIVATE USE_MPI)
+endif()
 
 # Set output directory
 set_target_properties(tradingSim PROPERTIES
