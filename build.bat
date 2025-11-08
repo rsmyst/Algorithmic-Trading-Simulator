@@ -55,4 +55,3 @@ echo Build successful!
 echo Executable: build\bin\Release\tradingSim.exe
 echo ================================================
 echo.
-pause

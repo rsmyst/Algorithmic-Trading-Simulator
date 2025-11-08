@@ -88,32 +88,47 @@ std::tuple<double, double, double> TechnicalIndicators::calculateMACD(
     int slow_period,
     int signal_period)
 {
-    if (prices.size() < slow_period)
+    // Need enough data to compute slow EMA and meaningful signal EMA of MACD series
+    if (prices.size() < slow_period + signal_period)
     {
         return {0.0, 0.0, 0.0};
     }
 
-    double fast_ema = 0.0, slow_ema = 0.0;
+    // Latest MACD line value using the current price history
+    double fast_ema_latest = calculateEMA(prices, fast_period);
+    double slow_ema_latest = calculateEMA(prices, slow_period);
+    double macd_line = fast_ema_latest - slow_ema_latest;
 
-// Parallel EMA calculation
-#pragma omp parallel sections
+    // Build a local MACD series for the last `signal_period` points (thread-safe, no static state)
+    std::vector<double> macd_series;
+    macd_series.reserve(signal_period);
+
+    // We reconstruct MACD values for each point needed for the signal EMA by progressively
+    // extending a prefix of the price history. This is more expensive than an incremental
+    // update but keeps the function pure and race-free for small periods.
+    size_t start_index = prices.size() - (signal_period + 1); // +1 ensures we have `signal_period` MACD points
+    for (size_t idx = start_index; idx < prices.size(); ++idx)
     {
-#pragma omp section
+        // Slice up to idx (inclusive) for EMA calculations.
+        // Because calculateEMA only looks at the tail of length `period`, we can pass full vector.
+        // It will internally use the last `period` prices.
+        std::vector<double> prefix(prices.begin(), prices.begin() + idx + 1);
+        if (prefix.size() >= slow_period)
         {
-            fast_ema = calculateEMA(prices, fast_period);
-        }
-#pragma omp section
-        {
-            slow_ema = calculateEMA(prices, slow_period);
+            double fast_ema = calculateEMA(prefix, fast_period);
+            double slow_ema = calculateEMA(prefix, slow_period);
+            macd_series.push_back(fast_ema - slow_ema);
         }
     }
 
-    double macd_line = fast_ema - slow_ema;
+    // If we still didn't accumulate enough MACD points, return zeros.
+    if (macd_series.size() < signal_period)
+    {
+        return {macd_line, 0.0, macd_line}; // Degrade gracefully; histogram == macd_line until signal forms
+    }
 
-    // Calculate signal line (EMA of MACD)
-    // For simplicity, use a simple moving average of recent MACD values
-    double signal_line = macd_line * 0.9; // Simplified
-
+    // Compute signal line as EMA of macd_series.
+    double signal_line = calculateEMA(macd_series, signal_period);
     double histogram = macd_line - signal_line;
 
     return {macd_line, signal_line, histogram};

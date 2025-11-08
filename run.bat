@@ -17,10 +17,10 @@ if not exist "build\bin\Release\tradingSim.exe" (
 )
 
 REM Parse command line arguments or use defaults
-set NUM_TRADERS=12
-set DURATION=60
-set INITIAL_PRICE=100.0
-set INITIAL_CASH=10000.0
+set NUM_TRADERS=10
+set DURATION=120
+set INITIAL_PRICE=111.46
+set INITIAL_CASH=5000.0
 set INITIAL_SPEED=1.0
 
 REM Check for command line arguments
@@ -48,4 +48,3 @@ echo.
 echo ================================================
 echo Simulation finished!
 echo ================================================
-pause

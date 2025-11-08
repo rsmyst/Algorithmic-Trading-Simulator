@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
         
         // Title
         elements.push_back(
-            text("🏦 Algorithmic Trading Simulation") | bold | color(Color::Cyan) | center
+            text("Algorithmic Trading Simulation") | bold | color(Color::Cyan) | center
         );
         elements.push_back(separator());
         
