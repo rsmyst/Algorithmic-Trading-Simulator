@@ -127,7 +127,6 @@ void DataLogger::logTrade(const ExecutedTrade &trade)
 
     trade_buffer.push_back(ss.str());
 
-    // Flush if buffer is large
     if (trade_buffer.size() >= 100)
     {
         for (const auto &line : trade_buffer)
@@ -154,7 +153,6 @@ void DataLogger::logPrice(double timestamp, double price, double volume, int buy
 
     price_buffer.push_back(ss.str());
 
-    // Flush if buffer is large
     if (price_buffer.size() >= 50)
     {
         for (const auto &line : price_buffer)
@@ -172,7 +170,6 @@ void DataLogger::logTraderStats(double timestamp, const std::vector<std::unique_
     if (!trader_stats_log.is_open())
         return;
 
-    // Parallel logging of trader stats
     std::vector<std::string> stats_lines(traders.size());
 
 #pragma omp parallel for schedule(dynamic)
@@ -194,7 +191,6 @@ void DataLogger::logTraderStats(double timestamp, const std::vector<std::unique_
         stats_lines[i] = ss.str();
     }
 
-    // Write all lines
     for (const auto &line : stats_lines)
     {
         trader_stats_log << line;
@@ -210,7 +206,6 @@ void DataLogger::logOrderBook(double timestamp,
     if (!order_book_log.is_open())
         return;
 
-    // Log buy side
     for (const auto &[price, quantity] : buy_depth)
     {
         order_book_log << std::fixed << std::setprecision(2) << timestamp << ","
@@ -219,7 +214,6 @@ void DataLogger::logOrderBook(double timestamp,
                        << quantity << "\n";
     }
 
-    // Log sell side
     for (const auto &[price, quantity] : sell_depth)
     {
         order_book_log << std::fixed << std::setprecision(2) << timestamp << ","
@@ -233,7 +227,6 @@ void DataLogger::flush()
 {
     std::lock_guard<std::mutex> lock(log_mutex);
 
-    // Flush trade buffer
     if (trade_log.is_open())
     {
         for (const auto &line : trade_buffer)
@@ -244,7 +237,6 @@ void DataLogger::flush()
         trade_buffer.clear();
     }
 
-    // Flush price buffer
     if (price_log.is_open())
     {
         for (const auto &line : price_buffer)
@@ -255,33 +247,16 @@ void DataLogger::flush()
         price_buffer.clear();
     }
 
-    // Flush other logs
     if (trader_stats_log.is_open())
         trader_stats_log.flush();
     if (order_book_log.is_open())
         order_book_log.flush();
 }
 
-void DataLogger::aggregateMPI()
-{
-    if (!mpi_enabled || mpi_size <= 1)
-        return;
-
-    // Flush all buffers first
-    flush();
-
-    // MPI aggregation would be implemented here
-    // For now, this is a placeholder that would use MPI_Gather or MPI_Reduce
-    // to combine logs from all processes into a master log file
-
-    std::cout << "MPI Aggregation not fully implemented (rank " << mpi_rank << ")" << std::endl;
-}
-
 void DataLogger::exportToJSON(const std::string &filename)
 {
     flush();
 
-    // Simple JSON export (basic implementation)
     std::ofstream json_file(log_directory + "/" + filename);
 
     if (!json_file.is_open())
@@ -314,7 +289,6 @@ void DataLogger::parallelWrite(const std::string &filename, const std::vector<st
         return;
     }
 
-// Parallel write using OpenMP critical sections
 #pragma omp parallel for ordered
     for (int i = 0; i < data.size(); i++)
     {

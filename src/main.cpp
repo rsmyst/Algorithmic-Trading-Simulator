@@ -3,7 +3,6 @@
 #include <ftxui/component/captured_mouse.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
-// #include <ftxui/component/input.hpp> // --- NEW: For input boxes ---
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,7 +23,6 @@
 
 using namespace ftxui;
 
-// --- (Config struct, printHelp, parseArguments are IDENTICAL to Part 1) ---
 struct Config
 {
     int num_traders = 12;
@@ -43,6 +41,7 @@ struct SimulationSummaryPacket
 };
 
 static_assert(std::is_trivially_copyable_v<SimulationSummaryPacket>, "SimulationSummaryPacket must be trivially copyable for MPI transfers.");
+
 void printHelp()
 {
     std::cout << "Algorithmic Trading Simulator\n\n";
@@ -107,7 +106,6 @@ Config parseArguments(int argc, char *argv[])
     return config;
 }
 
-// --- 4. Main Function ---
 int main(int argc, char *argv[])
 {
     MPI_Init(&argc, &argv);
@@ -128,9 +126,6 @@ int main(int argc, char *argv[])
 
     if (config.ensemble_count > 0)
     {
-        // ==================================
-        // === 1. ENSEMBLE (HEADLESS) MODE ===
-        // ==================================
         int n = config.ensemble_count;
         int base_sims = n / mpi_size;
         int extra_sims = n % mpi_size;
@@ -141,9 +136,9 @@ int main(int argc, char *argv[])
             std::cout << "=== Running Ensemble Mode ===\n"
                       << "Total Simulations: " << n << "\n"
                       << "MPI Processes: " << mpi_size << "\n"
-                      << "----------------------------------\n";
+                      << "==============================\n";
         }
-        // Local storage for simulation results
+
         std::vector<SimulationSummaryPacket> local_results;
         local_results.reserve(sims_for_this_rank);
 
@@ -168,7 +163,6 @@ int main(int argc, char *argv[])
                       << ", Volume: $" << std::fixed << std::setprecision(2) << stats.total_volume << ")" << std::endl;
         }
 
-        // Gather all results to rank 0
         std::vector<int> recv_counts(mpi_size);
         std::vector<int> displs(mpi_size);
         int local_count = static_cast<int>(local_results.size());
@@ -187,7 +181,6 @@ int main(int argc, char *argv[])
             all_results.resize(total_results);
         }
 
-        // Calculate byte counts and displacements for MPI_Gatherv
         constexpr int packet_size = sizeof(SimulationSummaryPacket);
         std::vector<int> byte_recv_counts(mpi_size);
         std::vector<int> byte_displs(mpi_size);
@@ -207,7 +200,6 @@ int main(int argc, char *argv[])
 
         if (mpi_rank == 0)
         {
-            // Calculate comprehensive statistics
             long long total_trades = 0;
             double total_volume = 0.0;
             double sum_avg_price = 0.0;
@@ -253,7 +245,6 @@ int main(int argc, char *argv[])
             double avg_price = sum_avg_price / n_sims;
             double avg_volatility = sum_volatility / n_sims;
 
-            // Calculate standard deviations
             auto calc_stddev = [n_sims](const std::vector<double> &values, double mean)
             {
                 double sum_sq = 0.0;
@@ -336,10 +327,6 @@ int main(int argc, char *argv[])
     }
     else
     {
-        // ==================================
-        // === 2. INTERACTIVE TUI MODE ===
-        // ==================================
-
         if (mpi_rank == 0)
         {
             TradingSimulation simulation(config.num_traders, config.initial_price, config.initial_cash, config.base_seed);
@@ -352,13 +339,11 @@ int main(int argc, char *argv[])
             auto start_time = std::chrono::steady_clock::now();
             auto last_update = std::chrono::steady_clock::now();
 
-            // --- NEW: State for Human Trader ---
             std::string human_price_str = std::to_string(static_cast<int>(config.initial_price));
             std::string human_qty_str = "10";
-            std::string human_trader_id = "0"; // We designate Trader 0 as the Human
+            std::string human_trader_id = "0";
             std::string last_action_msg = "Welcome, Trader 0!";
 
-            // --- NEW: UI Components for Human ---
             Component price_input = Input(&human_price_str, "Price");
             Component qty_input = Input(&human_qty_str, "Qty");
 
@@ -376,11 +361,9 @@ int main(int argc, char *argv[])
                         return;
                     }
 
-                    // Get current time from simulation
                     double timestamp = simulation.getStats().simulation_time;
-
                     Order human_order(0, trader_id, type, price, qty, timestamp);
-                    simulation.addHumanOrder(human_order); // Inject the order
+                    simulation.addHumanOrder(human_order);
 
                     last_action_msg = (type == OrderType::BUY ? "BUY" : "SELL");
                     last_action_msg += " order for " + human_qty_str + " @ $" + human_price_str + " sent!";
@@ -396,13 +379,11 @@ int main(int argc, char *argv[])
             Component sell_button = Button("  SELL  ", [&]()
                                            { human_trade_action(OrderType::SELL); }, ButtonOption::Animated(Color::Red));
 
-            // --- NEW: Add components to a container for focus ---
             auto main_container = Container::Vertical({price_input,
                                                        qty_input,
                                                        buy_button,
                                                        sell_button});
 
-            // Handle 'q' to quit
             main_container |= CatchEvent([&](Event event)
                                          {
                 if (event == Event::Character('q') || event == Event::Character('Q')) {
@@ -412,7 +393,6 @@ int main(int argc, char *argv[])
                 }
                 return false; });
 
-            // Create renderer
             auto renderer = Renderer(main_container, [&]
                                      {
                 auto now = std::chrono::steady_clock::now();
@@ -432,7 +412,6 @@ int main(int argc, char *argv[])
                 
                 std::vector<Element> elements;
                 
-                // ... (Title, Info Bar, Price Graph are all the same as before) ...
                 elements.push_back(text("Algorithmic Trading Simulation") | bold | color(Color::Cyan) | center);
                 elements.push_back(separator());
                 int remaining = config.duration_seconds - elapsed;
@@ -450,54 +429,46 @@ int main(int argc, char *argv[])
                 price_ss << std::fixed << std::setprecision(2) << (price_change >= 0 ? "+" : "") << price_change << "%";
                 elements.push_back(hbox({ text("Current Price: ") | bold, text("$" + std::to_string(static_cast<int>(current_price))) | color(Color::GreenLight) | bold, text("  "), text(change_indicator + " " + price_ss.str()) | color(price_change_color) | bold, }));
                 if (!price_history.empty()) {
-                    // 1. Find the min/max price for auto-scaling
                     double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
                     double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
                     
                     double price_range = max_price_seen - min_price_seen;
-                    if (price_range < 1.0) price_range = 1.0; // Avoid division by zero
+                    if (price_range < 1.0) price_range = 1.0;
                     
-                    // Add 5% buffer to top and bottom
                     double max_price = max_price_seen + (price_range * 0.05);
                     double min_price = min_price_seen - (price_range * 0.05);
                     
                     double range = max_price - min_price;
                     if (range < 1.0) range = 1.0;
                     
-                    const int graph_height = 15; // Height in text lines
+                    const int graph_height = 15;
                     std::vector<Element> columns;
                     
                     for (size_t i = 0; i < price_history.size(); i++) {
                         double price = price_history[i];
                         
-                        // Normalize price to graph height (0 to 14)
                         double normalized = (price - min_price) / range;
                         int filled_lines = static_cast<int>(normalized * (graph_height - 1));
                         filled_lines = std::max(0, std::min(graph_height - 1, filled_lines));
                         
-                        // 2. NEW COLOR LOGIC
-                        Color bar_color = Color::GrayDark; // Default for no change
+                        Color bar_color = Color::GrayDark;
                         if (i > 0) {
                             if (price > price_history[i-1]) {
-                                bar_color = Color::Green; // Price went UP
+                                bar_color = Color::Green;
                             } else if (price < price_history[i-1]) {
-                                bar_color = Color::Red; // Price went DOWN
+                                bar_color = Color::Red;
                             }
                         } else if (price_history.size() > 0) {
-                            // Color the first dot based on initial price (optional, but good)
                              bar_color = (price > config.initial_price) ? Color::Green : Color::Red;
                         }
 
-                        // 3. NEW DRAWING LOOP (No Yellow Line)
                         std::vector<Element> vertical_blocks;
                         for (int line = 0; line < graph_height; line++) {
                             int line_from_bottom = graph_height - 1 - line;
                             
                             if (line_from_bottom == filled_lines) {
-                                // Draw the price dot
                                 vertical_blocks.push_back(text("●") | color(bar_color));
                             } else {
-                                // Empty space
                                 vertical_blocks.push_back(text(" "));
                             }
                         }
@@ -505,42 +476,7 @@ int main(int argc, char *argv[])
                     }
                     elements.push_back(hbox(std::move(columns)) | border | flex);
                 }
-                // if (!price_history.empty()) {
-                //     double initial_price = config.initial_price;
-                //     double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
-                //     double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
-                //     max_price_seen = std::max(max_price_seen, initial_price); min_price_seen = std::min(min_price_seen, initial_price);
-                //     double price_range = max_price_seen - min_price_seen; if (price_range < 1.0) price_range = 1.0;
-                //     double buffer = price_range * 0.1; double max_price = max_price_seen + buffer; double min_price = min_price_seen - buffer;
-                //     double range = max_price - min_price; if (range < 1.0) range = 1.0;
-                //     const int graph_height = 15;
-                //     double initial_price_normalized = (initial_price - min_price) / range;
-                //     int baseline_pos = static_cast<int>(initial_price_normalized * (graph_height - 1));
-                //     baseline_pos = std::max(0, std::min(graph_height - 1, baseline_pos));
-                //     std::vector<Element> columns;
-                //     for (size_t i = 0; i < price_history.size(); i++) {
-                //         double price = price_history[i];
-                //         double normalized = (price - min_price) / range;
-                //         int filled_lines = static_cast<int>(normalized * (graph_height - 1));
-                //         filled_lines = std::max(0, std::min(graph_height - 1, filled_lines));
-                //         Color bar_color = (price > initial_price) ? Color::Green : Color::Red;
-                //         std::vector<Element> vertical_blocks;
-                //         for (int line = 0; line < graph_height; line++) {
-                //             int line_from_bottom = graph_height - 1 - line;
-                //             if (line_from_bottom == baseline_pos) {
-                //                 if (line_from_bottom == filled_lines) vertical_blocks.push_back(text("◆") | color(bar_color) | bold);
-                //                 else vertical_blocks.push_back(text("─") | color(Color::Yellow));
-                //             } else if (line_from_bottom == filled_lines) {
-                //                 vertical_blocks.push_back(text("●") | color(bar_color));
-                //             } else vertical_blocks.push_back(text(" "));
-                //         }
-                //         columns.push_back(vbox(std::move(vertical_blocks)));
-                //     }
-                //     elements.push_back(hbox(std::move(columns)) | border | flex);
-                // }
-                // elements.push_back(separator());
                 
-                // --- (Order Book / Stats Row is the same) ---
                 const auto& order_book = simulation.getOrderBook();
                 auto buy_depth = order_book.getBuyDepth(5);
                 auto sell_depth = order_book.getSellDepth(5);
@@ -557,9 +493,8 @@ int main(int argc, char *argv[])
                 }));
                 elements.push_back(separator());
 
-                // --- NEW: Human Trader Control Panel ---
                 const auto& traders = simulation.getTraders();
-                const Trader* human_trader = traders[std::stoi(human_trader_id)].get(); // Get Trader 0
+                const Trader* human_trader = traders[std::stoi(human_trader_id)].get();
                 double human_net_worth = human_trader->getNetWorth(current_price);
                 double human_profit = human_net_worth - config.initial_cash;
 
@@ -583,13 +518,12 @@ int main(int argc, char *argv[])
                     text(exec_notification) | center | bold | color(Color::GreenLight)
                 }) | border;
 
-                // --- MODIFIED: Top Traders Panel ---
                 auto top_traders_panel = vbox({
-                    text("Top AI Traders (by Net Worth)") | bold | color(Color::Yellow),
+                    text("Top Traders (by Net Worth)") | bold | color(Color::Yellow),
                     [&] {
                         std::vector<const Trader*> sorted_traders;
                         for (const auto& trader : traders) {
-                            if (trader->getId() != std::stoi(human_trader_id)) // Exclude human
+                            if (trader->getId() != std::stoi(human_trader_id))
                                 sorted_traders.push_back(trader.get());
                         }
                         std::sort(sorted_traders.begin(), sorted_traders.end(), 
@@ -616,7 +550,6 @@ int main(int argc, char *argv[])
                     }()
                 }) | border;
 
-                // --- NEW: Add Human and AI panels side-by-side ---
                 elements.push_back(
                     hbox({
                         human_panel | flex,
@@ -626,7 +559,6 @@ int main(int argc, char *argv[])
                 
                 return vbox(std::move(elements)) | border; });
 
-            // Refresh thread
             std::thread refresh_thread([&]
                                        {
                 while (running) {
@@ -642,7 +574,6 @@ int main(int argc, char *argv[])
                 refresh_thread.join();
             }
 
-            // --- (Final Summary Printout is the same) ---
             std::cout << "\n=== Simulation Complete ===\n\n";
             auto stats = simulation.getStats();
             std::cout << "Duration: " << stats.simulation_time << " seconds\n";

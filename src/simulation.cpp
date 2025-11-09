@@ -9,7 +9,6 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
     : market(initial_price), current_time(0.0), time_step(0.1),
       base_seed(seed), mpi_enabled(false), mpi_rank(0), mpi_size(1)
 {
-    // Create traders with different strategies
     for (int i = 0; i < num_traders; i++)
     {
         Strategy strat;
@@ -45,9 +44,7 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
         traders.push_back(std::make_unique<Trader>(i, strat, initial_cash, trader_seed));
     }
 
-    // Give half the traders initial holdings so they can sell
-    // This creates market liquidity from the start
-    int initial_holdings = 50; // Start with 50 shares
+    int initial_holdings = 50;
     for (int i = 0; i < num_traders / 2; i++)
     {
         traders[i]->setInitialHoldings(initial_holdings);
@@ -57,8 +54,8 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
 void TradingSimulation::setTimeScale(double scale)
 {
     if (scale <= 0.0)
-        scale = 1.0;         // Ensure positive
-    time_step = 0.1 / scale; // Base time step is 0.1, divided by scale for faster simulation
+        scale = 1.0;
+    time_step = 0.1 / scale;
 }
 
 void TradingSimulation::initializeMPI(bool use_mpi, int rank, int size)
@@ -80,7 +77,6 @@ void TradingSimulation::step()
 
     double current_price = market.getCurrentPrice();
 
-// Phase 1: Parallel order creation with OpenMP
 #pragma omp parallel
     {
         std::vector<Order> local_orders;
@@ -90,14 +86,10 @@ void TradingSimulation::step()
 #pragma omp for nowait
         for (int i = 0; i < traders.size(); i++)
         {
-            // --- FIX FOR HUMAN PLAYER ---
-            // The human player (Trader 0) is skipped.
-            // Their orders are added via addHumanOrder()
             if (traders[i]->getId() == 0)
             {
                 continue;
             }
-            // --- END FIX ---
 
             TraderOrder trader_order = traders[i]->createOrder(current_price, current_time);
 
@@ -124,7 +116,6 @@ void TradingSimulation::step()
             }
         }
 
-        // Combine results from all threads
 #pragma omp critical
         {
             current_orders.insert(current_orders.end(), local_orders.begin(), local_orders.end());
@@ -133,16 +124,13 @@ void TradingSimulation::step()
         }
     }
 
-    // Phase 2: Add orders to order book
     for (auto &order : current_orders)
     {
         order_book.addOrder(order);
     }
 
-    // Phase 3: Match orders (parallel matching inside OrderBook)
     std::vector<ExecutedTrade> executed_trades = order_book.matchOrders();
 
-    // Phase 4: Execute trades and update traders
     for (const auto &trade : executed_trades)
     {
         std::stringstream ss;
@@ -158,20 +146,14 @@ void TradingSimulation::step()
                << std::fixed << std::setprecision(2) << trade.price;
             last_human_trade_notification = ss.str();
         }
-        // Update buyer
+
         traders[trade.buyer_id]->executeOrder(true, trade.price, trade.quantity);
-
-        // Update seller
         traders[trade.seller_id]->executeOrder(false, trade.price, trade.quantity);
-
-        // Log trade
         logger.logTrade(trade);
     }
 
-    // Update market based on trading activity
     market.updatePrice(total_buy_quantity, total_sell_quantity);
 
-    // Log price and order book data periodically
     if (static_cast<int>(current_time * 10) % 10 == 0)
     {
         double volume = 0.0;
@@ -190,7 +172,6 @@ void TradingSimulation::step()
         logger.logOrderBook(current_time, buy_depth, sell_depth);
     }
 
-    // Cleanup filled orders periodically
     if (static_cast<int>(current_time) % 10 == 0)
     {
         order_book.cleanupFilledOrders();
@@ -213,7 +194,6 @@ SimulationStats TradingSimulation::getStats() const
     }
     else
     {
-        // Calculate total volume
         stats.total_volume = 0;
         double sum_price = 0;
         for (const auto &trade : executed_trades)
@@ -224,7 +204,6 @@ SimulationStats TradingSimulation::getStats() const
 
         stats.avg_price = sum_price / executed_trades.size();
 
-        // Calculate price volatility
         const auto &history = market.getPriceHistory();
         if (history.size() > 1)
         {
@@ -242,7 +221,6 @@ SimulationStats TradingSimulation::getStats() const
         }
     }
 
-    // Order book statistics
     stats.pending_buy_orders = order_book.getBuyOrderCount();
     stats.pending_sell_orders = order_book.getSellOrderCount();
     stats.best_bid = order_book.getBestBid();
@@ -254,14 +232,11 @@ SimulationStats TradingSimulation::getStats() const
 
 void TradingSimulation::addHumanOrder(Order order)
 {
-    // This function injects a human-placed order into the order book
     order_book.addOrder(order);
 }
 
 SimulationStats TradingSimulation::runHeadless(double duration_seconds)
 {
-    // Use a discrete number of steps based on time_scale
-    // This makes the run faster and deterministic, not reliant on wall-clock
     int total_steps = static_cast<int>(duration_seconds / time_step);
 
     for (int i = 0; i < total_steps; ++i)
@@ -269,7 +244,6 @@ SimulationStats TradingSimulation::runHeadless(double duration_seconds)
         step();
     }
 
-    // When done, flush logs and return final stats
     logger.flush();
     return getStats();
 }

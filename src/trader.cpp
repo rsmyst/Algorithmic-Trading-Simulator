@@ -4,8 +4,6 @@
 #include <numeric>
 #include <omp.h>
 
-// Technical Indicators Implementation
-
 double TechnicalIndicators::calculateSMA(const std::vector<double> &prices, int period)
 {
     if (prices.size() < period)
@@ -88,30 +86,21 @@ std::tuple<double, double, double> TechnicalIndicators::calculateMACD(
     int slow_period,
     int signal_period)
 {
-    // Need enough data to compute slow EMA and meaningful signal EMA of MACD series
     if (prices.size() < slow_period + signal_period)
     {
         return {0.0, 0.0, 0.0};
     }
 
-    // Latest MACD line value using the current price history
     double fast_ema_latest = calculateEMA(prices, fast_period);
     double slow_ema_latest = calculateEMA(prices, slow_period);
     double macd_line = fast_ema_latest - slow_ema_latest;
 
-    // Build a local MACD series for the last `signal_period` points (thread-safe, no static state)
     std::vector<double> macd_series;
     macd_series.reserve(signal_period);
 
-    // We reconstruct MACD values for each point needed for the signal EMA by progressively
-    // extending a prefix of the price history. This is more expensive than an incremental
-    // update but keeps the function pure and race-free for small periods.
-    size_t start_index = prices.size() - (signal_period + 1); // +1 ensures we have `signal_period` MACD points
+    size_t start_index = prices.size() - (signal_period + 1);
     for (size_t idx = start_index; idx < prices.size(); ++idx)
     {
-        // Slice up to idx (inclusive) for EMA calculations.
-        // Because calculateEMA only looks at the tail of length `period`, we can pass full vector.
-        // It will internally use the last `period` prices.
         std::vector<double> prefix(prices.begin(), prices.begin() + idx + 1);
         if (prefix.size() >= slow_period)
         {
@@ -121,13 +110,11 @@ std::tuple<double, double, double> TechnicalIndicators::calculateMACD(
         }
     }
 
-    // If we still didn't accumulate enough MACD points, return zeros.
     if (macd_series.size() < signal_period)
     {
-        return {macd_line, 0.0, macd_line}; // Degrade gracefully; histogram == macd_line until signal forms
+        return {macd_line, 0.0, macd_line};
     }
 
-    // Compute signal line as EMA of macd_series.
     double signal_line = calculateEMA(macd_series, signal_period);
     double histogram = macd_line - signal_line;
 
@@ -146,7 +133,6 @@ std::tuple<double, double, double> TechnicalIndicators::calculateBollingerBands(
 
     double sma = calculateSMA(prices, period);
 
-    // Calculate standard deviation
     double variance = 0.0;
 #pragma omp parallel for reduction(+ : variance) if (period > 50)
     for (int i = prices.size() - period; i < prices.size(); i++)
@@ -169,7 +155,6 @@ void TechnicalIndicators::calculateAllIndicators(
     std::tuple<double, double, double> &macd,
     std::tuple<double, double, double> &bollinger)
 {
-// Parallel computation of all indicators
 #pragma omp parallel sections
     {
 #pragma omp section
@@ -186,8 +171,6 @@ void TechnicalIndicators::calculateAllIndicators(
         }
     }
 }
-
-// Trader Implementation
 
 Trader::Trader(int trader_id, Strategy strat, double initial_cash, unsigned int seed)
     : id(trader_id), strategy(strat), cash(initial_cash),
@@ -206,8 +189,6 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     trade.quantity = 0;
     trade.is_buy = true;
 
-    // Price history is managed in createOrder(), not here
-    // Need at least some history for strategies
     if (price_history.size() < 5)
     {
         return trade;
@@ -220,7 +201,6 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     {
     case Strategy::MOMENTUM:
     {
-        // Calculate recent trend
         double recent_avg = 0;
         double older_avg = 0;
         int half = price_history.size() / 2;
@@ -237,12 +217,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         }
         older_avg /= half;
 
-        // Buy if price is trending up
         if (recent_avg > older_avg * 1.02)
         {
             should_buy = true;
         }
-        // Sell if price is trending down
         else if (recent_avg < older_avg * 0.98)
         {
             should_sell = true;
@@ -252,7 +230,6 @@ Trade Trader::makeDecision(double current_price, double timestamp)
 
     case Strategy::MEAN_REVERSION:
     {
-        // Calculate mean and deviation
         double mean = 0;
         for (double p : price_history)
         {
@@ -260,12 +237,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         }
         mean /= price_history.size();
 
-        // Buy if price is significantly below mean
         if (current_price < mean * 0.95)
         {
             should_buy = true;
         }
-        // Sell if price is significantly above mean
         else if (current_price > mean * 1.05)
         {
             should_sell = true;
@@ -284,7 +259,6 @@ Trade Trader::makeDecision(double current_price, double timestamp)
 
     case Strategy::RISK_AVERSE:
     {
-        // Conservative strategy - only trade when confident
         double mean = 0;
         for (double p : price_history)
         {
@@ -292,12 +266,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         }
         mean /= price_history.size();
 
-        // Only buy if price is significantly below mean (good deal)
         if (current_price < mean * 0.90)
         {
             should_buy = true;
         }
-        // Only sell if price is significantly above mean (good profit)
         else if (current_price > mean * 1.10)
         {
             should_sell = true;
@@ -307,7 +279,6 @@ Trade Trader::makeDecision(double current_price, double timestamp)
 
     case Strategy::HIGH_RISK:
     {
-        // Aggressive strategy - trade frequently with larger positions
         double recent_avg = 0;
         int recent_count = std::min(3, static_cast<int>(price_history.size()));
         for (int i = price_history.size() - recent_count; i < price_history.size(); i++)
@@ -316,12 +287,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         }
         recent_avg /= recent_count;
 
-        // Buy on slight uptrend
         if (current_price > recent_avg * 1.01)
         {
             should_buy = true;
         }
-        // Sell on slight downtrend
         else if (current_price < recent_avg * 0.99)
         {
             should_sell = true;
@@ -332,12 +301,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     case Strategy::RSI_BASED:
     {
         updateIndicators();
-        // Buy when RSI < 30 (oversold)
         if (last_rsi < 30)
         {
             should_buy = true;
         }
-        // Sell when RSI > 70 (overbought)
         else if (last_rsi > 70)
         {
             should_sell = true;
@@ -350,12 +317,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         updateIndicators();
         auto [macd_line, signal_line, histogram] = TechnicalIndicators::calculateMACD(price_history);
 
-        // Buy when MACD crosses above signal line
         if (histogram > 0 && last_macd <= 0)
         {
             should_buy = true;
         }
-        // Sell when MACD crosses below signal line
         else if (histogram < 0 && last_macd >= 0)
         {
             should_sell = true;
@@ -367,12 +332,10 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     case Strategy::BOLLINGER:
     {
         updateIndicators();
-        // Buy when price is below lower band
         if (current_price < last_bollinger_lower)
         {
             should_buy = true;
         }
-        // Sell when price is above upper band
         else if (current_price > last_bollinger_upper)
         {
             should_sell = true;
@@ -386,26 +349,22 @@ Trade Trader::makeDecision(double current_price, double timestamp)
         int buy_signals = 0;
         int sell_signals = 0;
 
-        // RSI signals
         if (last_rsi < 35)
             buy_signals++;
         if (last_rsi > 65)
             sell_signals++;
 
-        // Bollinger signals
         if (current_price < last_bollinger_lower)
             buy_signals++;
         if (current_price > last_bollinger_upper)
             sell_signals++;
 
-        // MACD signals
         auto [macd_line, signal_line, histogram] = TechnicalIndicators::calculateMACD(price_history);
         if (histogram > 0)
             buy_signals++;
         if (histogram < 0)
             sell_signals++;
 
-        // Need at least 2 signals to trade
         if (buy_signals >= 2)
             should_buy = true;
         if (sell_signals >= 2)
@@ -414,17 +373,15 @@ Trade Trader::makeDecision(double current_price, double timestamp)
     }
     }
 
-    // Execute decision
     int trade_size = 10;
 
-    // Adjust trade size based on strategy
     if (strategy == Strategy::RISK_AVERSE)
     {
-        trade_size = 5; // Smaller positions for conservative traders
+        trade_size = 5;
     }
     else if (strategy == Strategy::HIGH_RISK)
     {
-        trade_size = 20; // Larger positions for aggressive traders
+        trade_size = 20;
     }
 
     if (should_buy && cash >= current_price * trade_size)
@@ -449,18 +406,17 @@ TraderOrder Trader::createOrder(double current_price, double timestamp)
     order.quantity = 0;
     order.is_buy = true;
 
-    // Store price in history
     price_history.push_back(current_price);
-    if (price_history.size() > 50) // Increased history for technical indicators
+    if (price_history.size() > 50)
     {
         price_history.erase(price_history.begin());
     }
 
-    // Need sufficient history (reduced requirement)
     if (price_history.size() < 3)
     {
         return order;
-    } // Use makeDecision logic to determine order
+    }
+
     Trade trade = makeDecision(current_price, timestamp);
 
     if (trade.quantity > 0)
@@ -468,16 +424,13 @@ TraderOrder Trader::createOrder(double current_price, double timestamp)
         order.is_buy = trade.is_buy;
         order.quantity = trade.quantity;
 
-        // Set limit price with wider offset to ensure matching
         if (order.is_buy)
         {
-            // Buy at slightly above current price to ensure matching
-            order.price = current_price * 1.005; // 0.5% above market
+            order.price = current_price * 1.005;
         }
         else
         {
-            // Sell at slightly below current price to ensure matching
-            order.price = current_price * 0.995; // 0.5% below market
+            order.price = current_price * 0.995;
         }
     }
 
@@ -515,7 +468,6 @@ void Trader::updateIndicators()
     if (price_history.size() < 14)
         return;
 
-    // Parallel update of technical indicators
     std::tuple<double, double, double> macd, bollinger;
 
 #pragma omp parallel sections

@@ -30,8 +30,8 @@ public:
     // Get order book statistics
     int getBuyOrderCount() const;
     int getSellOrderCount() const;
-    double getBestBid() const; // Highest buy price
-    double getBestAsk() const; // Lowest sell price
+    double getBestBid() const;
+    double getBestAsk() const;
     double getSpread() const;
 
     // Get all executed trades

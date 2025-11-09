@@ -12,35 +12,24 @@ Market::Market(double initial_price)
 
 void Market::updatePrice(int buy_orders, int sell_orders)
 {
-    // Store previous price for change calculation
     previous_price = current_price;
 
     buy_pressure += buy_orders;
     sell_pressure += sell_orders;
 
-    // Calculate price change based on supply/demand
     double pressure_diff = (buy_pressure - sell_pressure) * 0.1;
-
-    // Add random noise for market volatility
     double noise = noise_dist(rng);
-
-    // Update price with bounds
     double price_change = pressure_diff + noise;
     current_price += price_change;
-
-    // Keep price within reasonable bounds (20% to 300% of base price)
     current_price = std::max(base_price * 0.2, std::min(current_price, base_price * 3.0));
 
-    // Store in history
     price_history.push_back(current_price);
 
-    // Keep history size manageable
     if (price_history.size() > 1000)
     {
         price_history.erase(price_history.begin());
     }
 
-    // Gradually reduce pressure over time
     buy_pressure = static_cast<int>(buy_pressure * 0.8);
     sell_pressure = static_cast<int>(sell_pressure * 0.8);
 }

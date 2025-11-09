@@ -7,7 +7,6 @@
 #include "order.hpp"
 #include "trader.hpp"
 
-
 class DataLogger
 {
 private:
@@ -50,9 +49,6 @@ public:
 
     // Flush buffers to disk (parallel write with OpenMP)
     void flush();
-
-    // Aggregate logs across MPI processes
-    void aggregateMPI();
 
     // Export to JSON format
     void exportToJSON(const std::string &filename);

@@ -29,7 +29,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
     std::lock_guard<std::mutex> lock(book_mutex);
     std::vector<ExecutedTrade> new_trades;
 
-    // Get best bid and ask
     while (!buy_orders.empty() && !sell_orders.empty())
     {
         auto buy_it = buy_orders.begin();   // Highest buy price
@@ -38,10 +37,9 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
         double best_bid = buy_it->first;
         double best_ask = sell_it->first;
 
-        // If bid >= ask, we can match orders
         if (best_bid < best_ask)
         {
-            break; // No match possible
+            break;
         }
 
         std::vector<Order> &buy_list = buy_it->second;
@@ -49,7 +47,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
 
         if (buy_list.empty() || sell_list.empty())
         {
-            // Clean up empty price levels
             if (buy_list.empty())
                 buy_orders.erase(buy_it);
             if (sell_list.empty())
@@ -57,8 +54,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
             continue;
         }
 
-// Parallel matching within price levels using OpenMP
-// For simplicity, process sequentially but mark parallel-ready sections
 #pragma omp parallel for schedule(dynamic) if (buy_list.size() > 10)
         for (int i = 0; i < buy_list.size(); i++)
         {
@@ -66,7 +61,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
             if (buy_order.isFilled())
                 continue;
 
-// Match with sell orders
 #pragma omp critical
             {
                 for (auto &sell_order : sell_list)
@@ -83,18 +77,16 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
 
                     if (match_quantity > 0)
                     {
-                        // Execute trade at the limit price (use sell order's ask price)
                         ExecutedTrade trade;
                         trade.trade_id = next_trade_id++;
                         trade.buy_order_id = buy_order.order_id;
                         trade.sell_order_id = sell_order.order_id;
                         trade.buyer_id = buy_order.trader_id;
                         trade.seller_id = sell_order.trader_id;
-                        trade.price = sell_order.price; // Price-time priority
+                        trade.price = sell_order.price;
                         trade.quantity = match_quantity;
                         trade.timestamp = buy_order.timestamp;
 
-                        // Update orders
                         buy_order.filled_quantity += match_quantity;
                         sell_order.filled_quantity += match_quantity;
 
@@ -123,7 +115,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
             }
         }
 
-        // Remove filled orders
         buy_list.erase(
             std::remove_if(buy_list.begin(), buy_list.end(),
                            [](const Order &o)
@@ -136,7 +127,6 @@ std::vector<ExecutedTrade> OrderBook::matchOrders()
                            { return o.isFilled(); }),
             sell_list.end());
 
-        // Clean up empty price levels
         if (buy_list.empty())
             buy_orders.erase(buy_it);
         if (sell_list.empty())
@@ -150,7 +140,6 @@ void OrderBook::cleanupFilledOrders()
 {
     std::lock_guard<std::mutex> lock(book_mutex);
 
-    // Remove filled orders from buy side
     for (auto it = buy_orders.begin(); it != buy_orders.end();)
     {
         auto &orders = it->second;
@@ -170,7 +159,6 @@ void OrderBook::cleanupFilledOrders()
         }
     }
 
-    // Remove filled orders from sell side
     for (auto it = sell_orders.begin(); it != sell_orders.end();)
     {
         auto &orders = it->second;
