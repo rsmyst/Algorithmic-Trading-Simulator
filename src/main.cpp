@@ -366,6 +366,8 @@ int main(int argc, char *argv[])
                 double human_net_worth = human_trader->getNetWorth(current_price);
                 double human_profit = human_net_worth - config.initial_cash;
 
+                std::string exec_notification = simulation.getHumanNotification();
+
                 auto human_panel = vbox({
                     text("Human Control (Trader " + human_trader_id + ")") | bold | color(Color::BlueLight),
                     text("Net Worth: $" + std::to_string(static_cast<int>(human_net_worth))),
@@ -380,7 +382,8 @@ int main(int argc, char *argv[])
                     }),
                     hbox({ buy_button->Render(), sell_button->Render() }) | center,
                     separator(),
-                    text(last_action_msg) | center | dim
+                    text(last_action_msg) | center | dim,
+                    text(exec_notification) | center | bold | color(Color::GreenLight)
                 }) | border;
 
                 // --- MODIFIED: Top Traders Panel ---

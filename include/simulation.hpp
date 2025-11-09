@@ -38,6 +38,8 @@ public:
 
     // --- NEW: Function for interactive TUI ---
     void addHumanOrder(Order order);
+    std::string getHumanNotification() const { return last_human_trade_notification; }
+
 
 private:
     Market market;
@@ -52,4 +54,5 @@ private:
     bool mpi_enabled;
     int mpi_rank;
     int mpi_size;
+    std::string last_human_trade_notification;
 };

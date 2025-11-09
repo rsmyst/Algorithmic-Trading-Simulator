@@ -2,6 +2,8 @@
 #include <omp.h>
 #include <algorithm>
 #include <numeric>
+#include <sstream>
+#include <iomanip>
 
 TradingSimulation::TradingSimulation(int num_traders, double initial_price, double initial_cash, unsigned int seed)
     : market(initial_price), current_time(0.0), time_step(0.1),
@@ -115,7 +117,7 @@ void TradingSimulation::step()
 
 
 // Combine results from all threads
-#pragma omp critical
+    #pragma omp critical
         {
             current_orders.insert(current_orders.end(), local_orders.begin(), local_orders.end());
             total_buy_quantity += local_buy;
@@ -135,6 +137,16 @@ void TradingSimulation::step()
     // Phase 4: Execute trades and update traders
     for (const auto &trade : executed_trades)
     {
+        std::stringstream ss;
+        if (trade.buyer_id == 0) {
+            ss << "SUCCESS: Bought " << trade.quantity << " @ $" 
+               << std::fixed << std::setprecision(2) << trade.price;
+            last_human_trade_notification = ss.str();
+        } else if (trade.seller_id == 0) {
+            ss << "SUCCESS: Sold " << trade.quantity << " @ $" 
+               << std::fixed << std::setprecision(2) << trade.price;
+            last_human_trade_notification = ss.str();
+        }
         // Update buyer
         traders[trade.buyer_id]->executeOrder(true, trade.price, trade.quantity);
 
