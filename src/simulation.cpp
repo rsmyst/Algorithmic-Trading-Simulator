@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <numeric>
 
-TradingSimulation::TradingSimulation(int num_traders, double initial_price, double initial_cash)
+TradingSimulation::TradingSimulation(int num_traders, double initial_price, double initial_cash, unsigned int seed)
     : market(initial_price), current_time(0.0), time_step(0.1),
       mpi_enabled(false), mpi_rank(0), mpi_size(1)
 {
@@ -11,27 +11,25 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
     for (int i = 0; i < num_traders; i++)
     {
         Strategy strat;
-        int strategy_type = i % 9; // Now we have 9 strategies
-        if (strategy_type == 0)
-            strat = Strategy::MOMENTUM;
-        else if (strategy_type == 1)
-            strat = Strategy::MEAN_REVERSION;
-        else if (strategy_type == 2)
-            strat = Strategy::RANDOM;
-        else if (strategy_type == 3)
-            strat = Strategy::RISK_AVERSE;
-        else if (strategy_type == 4)
-            strat = Strategy::HIGH_RISK;
-        else if (strategy_type == 5)
-            strat = Strategy::RSI_BASED;
-        else if (strategy_type == 6)
-            strat = Strategy::MACD_BASED;
-        else if (strategy_type == 7)
-            strat = Strategy::BOLLINGER;
-        else
-            strat = Strategy::MULTI_INDICATOR;
+        
+        if (i == 0) {
+            strat = Strategy::HUMAN;
+        } else {
+            int strategy_type = i % 9;
+            if (strategy_type == 0) strat = Strategy::MOMENTUM;
+            else if (strategy_type == 1) strat = Strategy::MEAN_REVERSION;
+            else if (strategy_type == 2) strat = Strategy::RANDOM;
+            else if (strategy_type == 3) strat = Strategy::RISK_AVERSE;
+            else if (strategy_type == 4) strat = Strategy::HIGH_RISK;
+            else if (strategy_type == 5) strat = Strategy::RSI_BASED;
+            else if (strategy_type == 6) strat = Strategy::MACD_BASED;
+            else if (strategy_type == 7) strat = Strategy::BOLLINGER;
+            else strat = Strategy::MULTI_INDICATOR;
+        }
 
-        traders.push_back(std::make_unique<Trader>(i, strat, initial_cash));
+        unsigned int trader_seed = base_seed + i;
+        traders.push_back(std::make_unique<Trader>(i, strat, initial_cash, trader_seed));
+
     }
 
     // Give half the traders initial holdings so they can sell
@@ -82,6 +80,14 @@ void TradingSimulation::step()
 #pragma omp for nowait
         for (int i = 0; i < traders.size(); i++)
         {
+            // --- FIX FOR HUMAN PLAYER ---
+            // The human player (Trader 0) is skipped.
+            // Their orders are added via addHumanOrder()
+            if (traders[i]->getId() == 0) {
+                continue;
+            }
+            // --- END FIX ---
+
             TraderOrder trader_order = traders[i]->createOrder(current_price, current_time);
 
             if (trader_order.quantity > 0)
@@ -106,6 +112,7 @@ void TradingSimulation::step()
                 }
             }
         }
+
 
 // Combine results from all threads
 #pragma omp critical
@@ -220,4 +227,28 @@ SimulationStats TradingSimulation::getStats() const
     stats.spread = order_book.getSpread();
 
     return stats;
+}
+
+void TradingSimulation::addHumanOrder(Order order)
+{
+    // This function injects a human-placed order into the order book
+    order_book.addOrder(order);
+}
+
+
+SimulationStats TradingSimulation::runHeadless(double duration_seconds)
+{
+    // Use a discrete number of steps based on time_scale
+    // This makes the run faster and deterministic, not reliant on wall-clock
+    int total_steps = static_cast<int>(duration_seconds / time_step);
+
+    for (int i = 0; i < total_steps; ++i)
+    {
+        step();
+    }
+
+    // When done, flush logs and return final stats
+    logger.flush();
+    logger.exportToJSON("sim_summary_final.json"); // Or a unique name
+    return getStats();
 }

@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <chrono>
 #include <filesystem>
+#include <memory>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -34,7 +35,7 @@ DataLogger::~DataLogger()
         order_book_log.close();
 }
 
-void DataLogger::initialize(bool use_mpi, int rank, int size)
+void DataLogger::initialize(bool use_mpi, int rank, int size, int sim_index)
 {
     mpi_enabled = use_mpi;
     mpi_rank = rank;
@@ -42,6 +43,7 @@ void DataLogger::initialize(bool use_mpi, int rank, int size)
 
     // Create log files with rank suffix if MPI is enabled
     std::string rank_suffix = mpi_enabled ? "_rank" + std::to_string(mpi_rank) : "";
+    std::string sim_suffix = (sim_index >= 0) ? "_sim" + std::to_string(sim_index) : "";
 
     trade_log.open(log_directory + "/trades" + rank_suffix + ".csv");
     price_log.open(log_directory + "/prices" + rank_suffix + ".csv");

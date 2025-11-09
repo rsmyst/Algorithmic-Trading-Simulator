@@ -4,7 +4,8 @@
 #include <random>
 
 enum class Strategy
-{
+{   
+    HUMAN,
     MOMENTUM,       // Buy when price is rising, sell when falling
     MEAN_REVERSION, // Buy when price is low, sell when high
     RANDOM,         // Random trading
@@ -83,7 +84,7 @@ private:
     std::mt19937 rng;
 
 public:
-    Trader(int trader_id, Strategy strat, double initial_cash);
+    Trader(int trader_id, Strategy strat, double initial_cash, unsigned int seed);
 
     // Make trading decision based on current price and strategy
     Trade makeDecision(double current_price, double timestamp);

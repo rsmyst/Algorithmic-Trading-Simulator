@@ -1,73 +1,55 @@
 #pragma once
-#include "trader.hpp"
-#include "market.hpp"
-#include "order_book.hpp"
-#include "logger.hpp"
 #include <vector>
 #include <memory>
-#include <mutex>
+#include "../include/trader.hpp"
+#include "../include/market.hpp"
+#include "../include/order_book.hpp"
+#include "../include/logger.hpp"
 
-struct SimulationStats
-{
-    double total_volume;
-    int total_trades;
-    double avg_price;
-    double price_volatility;
-    double simulation_time;
-    int pending_buy_orders;
-    int pending_sell_orders;
-    double best_bid;
-    double best_ask;
-    double spread;
+// Struct for final simulation statistics
+struct SimulationStats {
+    double simulation_time = 0.0;
+    int total_trades = 0;
+    double total_volume = 0.0;
+    double avg_price = 0.0;
+    double price_volatility = 0.0;
+    int pending_buy_orders = 0;
+    int pending_sell_orders = 0;
+    double best_bid = 0.0;
+    double best_ask = 0.0;
+    double spread = 0.0;
 };
 
-class TradingSimulation
-{
+class TradingSimulation {
+public:
+    TradingSimulation(int num_traders, double initial_price, double initial_cash, unsigned int seed = 12345);
+    
+    void setTimeScale(double scale);
+    void initializeMPI(bool use_mpi, int rank, int size);
+    
+    void step();
+    SimulationStats runHeadless(double duration_seconds);
+    SimulationStats getStats() const;
+    
+    const Market& getMarket() const { return market; }
+    const OrderBook& getOrderBook() const { return order_book; }
+    const std::vector<std::unique_ptr<Trader>>& getTraders() const { return traders; }
+    DataLogger& getLogger() { return logger; }
+
+    // --- NEW: Function for interactive TUI ---
+    void addHumanOrder(Order order);
+
 private:
-    std::vector<std::unique_ptr<Trader>> traders;
     Market market;
     OrderBook order_book;
+    std::vector<std::unique_ptr<Trader>> traders;
     DataLogger logger;
-    std::vector<Trade> trade_log;
-    std::mutex trade_mutex;
-
+    
     double current_time;
     double time_step;
-
+    unsigned int base_seed;
+    
     bool mpi_enabled;
     int mpi_rank;
     int mpi_size;
-
-public:
-    TradingSimulation(int num_traders, double initial_price, double initial_cash);
-
-    // Initialize with MPI support
-    void initializeMPI(bool use_mpi = false, int rank = 0, int size = 1);
-
-    // Set time scale (multiplier for simulation speed)
-    void setTimeScale(double scale);
-
-    // Run one simulation step (with order book matching)
-    void step();
-
-    // Get market data
-    const Market &getMarket() const { return market; }
-
-    // Get order book
-    const OrderBook &getOrderBook() const { return order_book; }
-
-    // Get traders
-    const std::vector<std::unique_ptr<Trader>> &getTraders() const { return traders; }
-
-    // Get current time
-    double getCurrentTime() const { return current_time; }
-
-    // Get simulation statistics
-    SimulationStats getStats() const;
-
-    // Get trade log
-    const std::vector<Trade> &getTradeLog() const { return trade_log; }
-
-    // Get logger
-    DataLogger &getLogger() { return logger; }
 };
