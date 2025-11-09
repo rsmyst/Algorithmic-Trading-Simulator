@@ -1,298 +1,247 @@
-# Algorithmic Trading Simulator
+Algorithmic Trading Simulator
 
-A high-performance C++ TUI (Terminal User Interface) program that simulates an algorithmic trading environment with multiple trader agents using different strategies. Features limit order book, advanced technical indicators, parallel processing with OpenMP, and comprehensive data logging.
+A high-performance C++ simulator that models an algorithmic trading environment. This project features a limit order book, multiple agent-based strategies using advanced technical indicators, and a dual-parallel architecture. It supports multi-threading with OpenMP for intra-simulation speedup and distributed computing with MPI for large-scale ensemble analysis.
 
-## Features
+A key feature is its hybrid-mode operation: it can be run as a real-time interactive Terminal User Interface (TUI) allowing a human to trade against the AI, or as a headless "ensemble" simulation for statistical backtesting.
 
-### 🏦 **Limit Order Book**
+Features
 
-- Full order book implementation with buy/sell orders at specific prices
-- Price-time priority matching algorithm
-- Real-time bid/ask spread calculation
-- Order book depth visualization (top 5 levels)
-- Parallel order matching using OpenMP
+Simulation Modes
 
-### 📊 **Advanced Trading Strategies**
+Interactive TUI Mode: A real-time, graphical dashboard built with FTXUI. It visualizes the price graph, order book depth, and market statistics as the simulation runs.
 
-Nine different trading strategies with technical indicators:
+Human-in-the-Loop (HIL): In TUI mode, Trader 0 is reserved for the human player. The UI provides dedicated input boxes and buttons for placing buy/sell orders in real-time to compete directly against the AI agents.
 
-- **Momentum**: Buys when price is trending up, sells when trending down
-- **Mean Reversion**: Buys when price is below average, sells when above
-- **Random**: Random trading for baseline comparison
-- **Risk Averse**: Conservative with smaller positions (5 shares)
-- **High Risk**: Aggressive with larger positions (20 shares)
-- **RSI-Based**: Trades on Relative Strength Index (oversold < 30, overbought > 70)
-- **MACD-Based**: Uses Moving Average Convergence Divergence
-- **Bollinger Bands**: Trades at upper/lower band touches
-- **Multi-Indicator**: Combines RSI, MACD, and Bollinger Bands (requires 2+ signals)
+Ensemble (Headless) Mode: A powerful statistical analysis mode. Using the -E flag, the simulator can run hundreds or thousands of simulations headlessly. It leverages MPI to distribute these runs across multiple processes, then aggregates the results to provide a statistical summary of strategy performance.
 
-### 🔬 **Technical Indicators**
+Core Engine
 
-All with parallel OpenMP computation:
+Limit Order Book: Full implementation of a central limit order book (CLOB) with buy/sell orders at specific price levels.
 
-- **SMA** (Simple Moving Average) with parallel sum reduction
-- **EMA** (Exponential Moving Average)
-- **RSI** (Relative Strength Index) with parallel gain/loss calculation
-- **MACD** with parallel fast/slow EMA computation
-- **Bollinger Bands** with parallel standard deviation calculation
+Price-Time Priority Matching: A high-fidelity matching engine that correctly implements the standard exchange algorithm (best price wins, first-in-first-out for ties).
 
-### 🚀 **Parallel Processing**
+Advanced Trading Strategies: A diverse ecosystem of autonomous agents. Trader 0 is reserved as the Human Player, while AI agents are assigned one of nine strategies:
 
-- **OpenMP** parallelization for:
-  - Trader decision-making
-  - Order matching within price levels
-  - Technical indicator calculations
-  - Data logging
-- **MPI** framework (optional) for distributed order book across nodes
+Momentum
 
-### � **Real-Time Visualization**
+Mean Reversion
 
-- Beautiful TUI built with FTXUI library
-- Dynamic price graph with initial price baseline
-- Color-coded price movements (green for up, red for down)
-- Real-time trader rankings
-- Order book depth display (side-by-side with statistics)
-- Market statistics and analytics
+Random (for baseline comparison)
 
-### � **Data Logging**
+Risk Averse (smaller positions)
 
-Comprehensive parallel I/O logging to CSV files:
+High Risk (larger positions)
 
-- `trades.csv`: All executed trades with timestamps, prices, quantities
-- `prices.csv`: Price history with volume and order counts
-- `trader_stats.csv`: Net worth, profit/loss, trades, RSI, MACD per trader
-- `order_book.csv`: Order book depth snapshots
-- `simulation_summary.json`: Summary statistics with metadata
+RSI-Based
 
-## Requirements
+MACD-Based
 
-- **C++17** compatible compiler
-- **CMake** 3.11 or higher
-- **OpenMP** support (included with most compilers)
-- **MPI** (optional - MS-MPI for Windows, OpenMPI for Linux)
-- Windows/Linux/macOS
+Bollinger Bands
 
-## Building the Project
+Multi-Indicator (confirmatory signals)
 
-### Quick Start (Windows)
+Parallelism & Performance
 
-```cmd
+OpenMP (Intra-Simulation): Multi-threaded parallelism used within a single simulation to accelerate computationally heavy tasks, including trader decision-making and technical indicator calculations.
+
+MPI (Inter-Simulation): Distributed computing used to execute the "Ensemble Mode." N simulation runs are automatically distributed across P available processes, and final results are aggregated via MPI_Reduce.
+
+Technical Indicators: Parallel computation of SMA, EMA, RSI, MACD, and Bollinger Bands using OpenMP.
+
+Data Logging: Comprehensive, thread-safe I/O for logging all simulation activity to CSV files (trades, prices, trader_stats, order_book) and a final JSON summary.
+
+Requirements
+
+C++17 compatible compiler
+
+CMake (3.11 or higher)
+
+OpenMP support (included with most modern C++ compilers)
+
+An MPI implementation (e.g., OpenMPI on Linux/macOS, MS-MPI on Windows)
+
+Building the Project
+
+Quick Start (Windows)
+
 # Build
 build.bat
 
-# Run with defaults (12 traders, 60 seconds)
+# Run Interactive TUI Mode
 run.bat
 
-# Run with custom parameters (traders, duration, initial_price, initial_cash)
-run.bat 20 120 150.0 15000.0
-```
+# Run with custom parameters (traders, duration, initial_price)
+run.bat 20 120 150.0
 
-### Manual Build
 
-```bash
+Manual Build (Linux/macOS)
+
 # Create build directory
 mkdir build
 cd build
 
-# Configure with CMake
+# Configure with CMake (this will find OpenMP and MPI)
 cmake ..
 
-# Build Release version
-cmake --build . --config Release
+# Build in Release mode using all available cores
+cmake --build . --config Release -j
 
-# Run
-.\build\bin\Release\tradingSim.exe
-```
+# Run the TUI mode
+./bin/tradingSim
 
-## Usage
 
-### Command Line Options
+Usage
 
-```
+Command Line Options
+
 Usage: tradingSim [options]
 
 Options:
   -t, --traders <num>     Number of trader agents (default: 12)
   -d, --duration <sec>    Simulation duration in seconds (default: 60)
-  -p, --price <value>     Initial asset price (default: 100.0)
+  -p, --price <value>     Initial asset price (default: 170.0)
   -c, --cash <value>      Initial cash per trader (default: 10000.0)
-  -h, --help              Show help message
+  -s, --speed <scale>     Time scale multiplier for TUI mode (default: 1.0)
+  -h, --help              Show this help message
 
-Examples:
-  tradingSim -t 20 -d 120 -p 150.0
-  tradingSim --traders 30 --duration 180
-```
+Ensemble Mode Options:
+  -E, --ensemble <N>      Run N simulations headlessly (disables TUI)
+  --seed <S>              Base seed for ensemble runs (default: 12345)
 
-### During Simulation
 
-- **Press 'q'**: Stop simulation and view final results
-- Auto-stops after specified duration
-- Live UI displays:
-  - Current market price with percentage change indicator
-  - Historical price graph with dynamic baseline (initial price)
-  - Order book depth (buy/sell sides)
-  - Top 5 traders by net worth
-  - Market statistics (trades, volume, volatility, pending orders)
-  - Time remaining
+Running the Simulator
 
-### After Simulation
+1. Interactive TUI Mode
 
-Final results include:
+To run the standard simulation with the interactive dashboard, execute the program directly:
 
-- Complete simulation statistics
-- Trader rankings sorted by ID
-- Individual performance metrics (net worth, profit/loss, trades)
-- Performance summary (max profit/loss with strategies)
-- Data exported to `logs/` directory
+./bin/tradingSim -t 20 -d 120 -p 150.0
 
-## Technical Architecture
 
-### Parallelization Strategy
+Controls:
 
-**OpenMP (Intra-node):**
+Press 'q': Stop simulation and view final results.
 
-1. Order creation: `#pragma omp parallel for` in simulation step
-2. Order matching: Dynamic scheduling within price levels
-3. Technical indicators: `#pragma omp parallel sections`
-4. Data logging: Parallel trader stats writing
+Human Player (Trader 0): Use the Price and Qty input boxes and the BUY / SELL buttons to place your own trades in real-time. Your performance is tracked in the "Human Control" panel.
 
-**MPI (Multi-node - Framework):**
+2. Ensemble (Headless) Mode
 
-- Order book distribution capability
-- Rank-specific logging
-- Aggregation framework ready for multi-node deployment
+To run a statistical analysis, use mpiexec. This example runs 100 simulations across 4 processes:
 
-### Performance Characteristics
+mpiexec -n 4 ./bin/tradingSim -E 100 --seed 42 -d 30
 
-**Scalability:**
 
-- OpenMP scales with CPU cores
-- Order book: O(log n) insertion, parallel matching
-- Technical indicators: Parallel computation reduces latency
-- I/O: Buffered writes with batch processing
+This will not show a TUI. It will print status messages to the console and end with an "Ensemble Summary" of the aggregated results from all 100 runs.
 
-**Bottlenecks:**
+After Simulation
 
-- Order book matching requires synchronization (mutex locks)
-- Technical indicator calculation scales with history size
-- File I/O with high trade volumes
+Final results are printed to the console, including:
 
-## Project Structure
+Complete simulation statistics (total trades, volume, etc.)
 
-```
-Alg Trad/
+Final trader rankings sorted by ID, showing individual profit/loss.
+
+Data exported to the logs/ directory for analysis.
+
+Technical Architecture
+
+Parallelization Strategy
+
+OpenMP (Intra-Simulation):
+Used for multi-threading within a single simulation. The primary use is in the step() function's order generation phase (#pragma omp parallel for), allowing all AI agents to "think" concurrently. It is also used in the TechnicalIndicators class to speed up calculations for RSI, MACD, etc.
+
+MPI (Inter-Simulation):
+Used for inter-simulation parallelism in Ensemble Mode. mpiexec launches P processes. Each process (or "rank") calculates its share of the N total simulations, runs them headlessly by calling runHeadless(), and then reports its aggregated results (e.g., local_total_trades) back to Rank 0 via MPI_Reduce.
+
+Project Structure
+
+Algorithmic-Trading-Simulator/
 ├── include/
 │   ├── trader.hpp          # Trader agents & technical indicators
 │   ├── market.hpp          # Market simulation & dynamics
-│   ├── order.hpp           # Order & trade structures
-│   ├── order_book.hpp      # Limit order book
+│   ├── order_book.hpp      # Limit order book & matching engine
 │   ├── logger.hpp          # Data logging system
 │   └── simulation.hpp      # Main simulation controller
 ├── src/
-│   ├── main.cpp            # TUI and main program
+│   ├── main.cpp            # Main entry, TUI, and MPI logic
 │   ├── trader.cpp          # Trader & indicator implementation
 │   ├── market.cpp          # Market implementation
 │   ├── order_book.cpp      # Order book implementation
 │   ├── logger.cpp          # Logging implementation
-│   └── simulation.cpp      # Simulation implementation
+│   └── simulation.cpp      # Simulation `step()` implementation
 ├── logs/                   # Generated during simulation
 ├── CMakeLists.txt          # CMake configuration
 ├── build.bat               # Windows build script
 ├── run.bat                 # Windows run script
 └── README.md
-```
 
-## How It Works
 
-1. **Initialization**
+How It Works
 
-   - Creates N trader agents with diverse strategies
-   - Initializes market with starting price
-   - Half the traders receive initial holdings (50 shares) for market liquidity
+Initialization:
 
-2. **Simulation Loop** (every 100ms)
+main.cpp initializes MPI and parses command-line args.
 
-   - All traders analyze market and create orders (parallelized with OpenMP)
-   - Orders added to limit order book
-   - Order matching engine processes trades
-   - Market updates prices based on supply/demand
-   - UI refreshes with current state
-   - Data logged periodically
+If in TUI mode, TradingSimulation is created.
 
-3. **Order Matching**
+The constructor creates N traders. Trader 0 is assigned Strategy::HUMAN.
 
-   - Price-time priority algorithm
-   - Buy orders at limit price ≥ sell price execute
-   - Parallel matching within price levels
-   - Automatic cleanup of filled orders
+All AI traders (1 to N) are assigned a strategy (Momentum, RSI, etc.) and a unique random seed.
 
-4. **Technical Analysis**
+Half the traders receive initial holdings (50 shares) to provide market liquidity.
 
-   - Indicators calculated in parallel for advanced strategies
-   - Cached values to reduce redundant calculations
-   - Real-time RSI, MACD displayed for relevant traders
+Simulation Loop (TUI Mode):
 
-5. **Price Dynamics**
-   - Updates based on net buy/sell pressure
-   - Random market noise for volatility
-   - Bounded to prevent unrealistic values
-   - Dynamic scaling on price graph
+main.cpp runs a render loop that refreshes the screen ~20 FPS.
 
-## Strategy Distribution
+Every 100ms, it calls simulation.step().
 
-With default 12 traders, strategies cycle through:
+Inside step(), all AI traders (1 to N) generate orders in parallel (OpenMP). Trader 0 is skipped.
 
-- 1x Momentum, 1x Mean Reversion, 1x Random
-- 1x Risk Averse, 1x High Risk
-- 2x RSI-Based, 2x MACD-Based
-- 1x Bollinger Bands, 1x Multi-Indicator
-- (Pattern repeats for additional traders)
+Human orders (if any were submitted) are injected via addHumanOrder().
 
-## Output Files
+All orders are added to the OrderBook.
 
-After simulation, check `logs/` directory:
+order_book.matchOrders() executes trades based on price-time priority.
 
-```
-logs/
-  ├── trades.csv              # All executed trades
-  ├── prices.csv              # Price history with volume
-  ├── trader_stats.csv        # Per-trader performance & indicators
-  ├── order_book.csv          # Order book depth snapshots
-  └── simulation_summary.json # Summary with metadata
-```
+Trader cash/holdings are updated.
 
-## Performance Notes
+market.updatePrice() adjusts the price based on order pressure.
 
-- OpenMP parallelizes across available CPU cores
-- UI refresh rate: 50ms (20 FPS)
-- Simulation step rate: 100ms (10 steps/second)
-- Graph displays last 200 data points with 15-line height
-- Initial price shown as dynamic horizontal baseline
-- Order matching uses 0.5% price tolerance for liquidity
+The TUI refreshes with the new state.
 
-## Future Enhancements
+Simulation Loop (Ensemble Mode):
 
-1. **Full MPI Implementation**: Distribute order book across nodes
-2. **GPU Acceleration**: CUDA for technical indicator calculations
-3. **Real-time Analytics**: Live dashboard with streaming data
-4. **Machine Learning**: ML-based adaptive strategies
-5. **Network Latency**: Simulate realistic market conditions
-6. **Historical Backtesting**: Test strategies on real market data
+main.cpp divides the N simulations among P processes.
 
-## References
+Each process loops, creating a new TradingSimulation object for each run (with a unique seed).
 
-- **Order Book**: Classic limit order book with price-time priority
-- **Technical Indicators**: Standard definitions (Investopedia)
-- **OpenMP**: OpenMP 4.5 specification
-- **MPI**: MPI-3.1 standard
-- **FTXUI**: Terminal UI library (MIT License)
+It calls simulation.runHeadless(), which runs the step() function in a tight loop at maximum speed.
 
-## License
+The final SimulationStats are returned and aggregated.
 
-See LICENSE file for details.
+Future Enhancements
 
----
+GPU Acceleration: Porting technical indicator calculations to CUDA.
 
-**Version**: 2.0.0  
-**Date**: November 4, 2025  
-**Build Status**: ✅ Successful
+Machine Learning: Implementing adaptive strategies using ML frameworks.
+
+Network Latency: Simulating realistic network delay for HFT strategies.
+
+Historical Backtesting: Modifying the Market module to read real historical trade data instead of generating random noise.
+
+References
+
+Order Book: Classic limit order book with price-time priority.
+
+Technical Indicators: Standard definitions (e.g., J. W. Wilder's New Concepts in Technical Trading Systems).
+
+OpenMP: OpenMP API Specification.
+
+MPI: MPI-3.1 Standard.
+
+FTXUI: A functional terminal user interface library (MIT License).
+
+Version: 3.0.0
+
+Date: November 9, 2025

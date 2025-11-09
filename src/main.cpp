@@ -253,39 +253,95 @@ int main(int argc, char *argv[])
                 price_ss << std::fixed << std::setprecision(2) << (price_change >= 0 ? "+" : "") << price_change << "%";
                 elements.push_back(hbox({ text("Current Price: ") | bold, text("$" + std::to_string(static_cast<int>(current_price))) | color(Color::GreenLight) | bold, text("  "), text(change_indicator + " " + price_ss.str()) | color(price_change_color) | bold, }));
                 if (!price_history.empty()) {
-                    double initial_price = config.initial_price;
+                    // 1. Find the min/max price for auto-scaling
                     double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
                     double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
-                    max_price_seen = std::max(max_price_seen, initial_price); min_price_seen = std::min(min_price_seen, initial_price);
-                    double price_range = max_price_seen - min_price_seen; if (price_range < 1.0) price_range = 1.0;
-                    double buffer = price_range * 0.1; double max_price = max_price_seen + buffer; double min_price = min_price_seen - buffer;
-                    double range = max_price - min_price; if (range < 1.0) range = 1.0;
-                    const int graph_height = 15;
-                    double initial_price_normalized = (initial_price - min_price) / range;
-                    int baseline_pos = static_cast<int>(initial_price_normalized * (graph_height - 1));
-                    baseline_pos = std::max(0, std::min(graph_height - 1, baseline_pos));
+                    
+                    double price_range = max_price_seen - min_price_seen;
+                    if (price_range < 1.0) price_range = 1.0; // Avoid division by zero
+                    
+                    // Add 5% buffer to top and bottom
+                    double max_price = max_price_seen + (price_range * 0.05);
+                    double min_price = min_price_seen - (price_range * 0.05);
+                    
+                    double range = max_price - min_price;
+                    if (range < 1.0) range = 1.0;
+                    
+                    const int graph_height = 15; // Height in text lines
                     std::vector<Element> columns;
+                    
                     for (size_t i = 0; i < price_history.size(); i++) {
                         double price = price_history[i];
+                        
+                        // Normalize price to graph height (0 to 14)
                         double normalized = (price - min_price) / range;
                         int filled_lines = static_cast<int>(normalized * (graph_height - 1));
                         filled_lines = std::max(0, std::min(graph_height - 1, filled_lines));
-                        Color bar_color = (price > initial_price) ? Color::Green : Color::Red;
+                        
+                        // 2. NEW COLOR LOGIC
+                        Color bar_color = Color::GrayDark; // Default for no change
+                        if (i > 0) {
+                            if (price > price_history[i-1]) {
+                                bar_color = Color::Green; // Price went UP
+                            } else if (price < price_history[i-1]) {
+                                bar_color = Color::Red; // Price went DOWN
+                            }
+                        } else if (price_history.size() > 0) {
+                            // Color the first dot based on initial price (optional, but good)
+                             bar_color = (price > config.initial_price) ? Color::Green : Color::Red;
+                        }
+
+                        // 3. NEW DRAWING LOOP (No Yellow Line)
                         std::vector<Element> vertical_blocks;
                         for (int line = 0; line < graph_height; line++) {
                             int line_from_bottom = graph_height - 1 - line;
-                            if (line_from_bottom == baseline_pos) {
-                                if (line_from_bottom == filled_lines) vertical_blocks.push_back(text("◆") | color(bar_color) | bold);
-                                else vertical_blocks.push_back(text("─") | color(Color::Yellow));
-                            } else if (line_from_bottom == filled_lines) {
+                            
+                            if (line_from_bottom == filled_lines) {
+                                // Draw the price dot
                                 vertical_blocks.push_back(text("●") | color(bar_color));
-                            } else vertical_blocks.push_back(text(" "));
+                            } else {
+                                // Empty space
+                                vertical_blocks.push_back(text(" "));
+                            }
                         }
                         columns.push_back(vbox(std::move(vertical_blocks)));
                     }
                     elements.push_back(hbox(std::move(columns)) | border | flex);
                 }
-                elements.push_back(separator());
+                // if (!price_history.empty()) {
+                //     double initial_price = config.initial_price;
+                //     double max_price_seen = *std::max_element(price_history.begin(), price_history.end());
+                //     double min_price_seen = *std::min_element(price_history.begin(), price_history.end());
+                //     max_price_seen = std::max(max_price_seen, initial_price); min_price_seen = std::min(min_price_seen, initial_price);
+                //     double price_range = max_price_seen - min_price_seen; if (price_range < 1.0) price_range = 1.0;
+                //     double buffer = price_range * 0.1; double max_price = max_price_seen + buffer; double min_price = min_price_seen - buffer;
+                //     double range = max_price - min_price; if (range < 1.0) range = 1.0;
+                //     const int graph_height = 15;
+                //     double initial_price_normalized = (initial_price - min_price) / range;
+                //     int baseline_pos = static_cast<int>(initial_price_normalized * (graph_height - 1));
+                //     baseline_pos = std::max(0, std::min(graph_height - 1, baseline_pos));
+                //     std::vector<Element> columns;
+                //     for (size_t i = 0; i < price_history.size(); i++) {
+                //         double price = price_history[i];
+                //         double normalized = (price - min_price) / range;
+                //         int filled_lines = static_cast<int>(normalized * (graph_height - 1));
+                //         filled_lines = std::max(0, std::min(graph_height - 1, filled_lines));
+                //         Color bar_color = (price > initial_price) ? Color::Green : Color::Red;
+                //         std::vector<Element> vertical_blocks;
+                //         for (int line = 0; line < graph_height; line++) {
+                //             int line_from_bottom = graph_height - 1 - line;
+                //             if (line_from_bottom == baseline_pos) {
+                //                 if (line_from_bottom == filled_lines) vertical_blocks.push_back(text("◆") | color(bar_color) | bold);
+                //                 else vertical_blocks.push_back(text("─") | color(Color::Yellow));
+                //             } else if (line_from_bottom == filled_lines) {
+                //                 vertical_blocks.push_back(text("●") | color(bar_color));
+                //             } else vertical_blocks.push_back(text(" "));
+                //         }
+                //         columns.push_back(vbox(std::move(vertical_blocks)));
+                //     }
+                //     elements.push_back(hbox(std::move(columns)) | border | flex);
+                // }
+                // elements.push_back(separator());
                 
                 // --- (Order Book / Stats Row is the same) ---
                 const auto& order_book = simulation.getOrderBook();
