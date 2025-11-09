@@ -189,10 +189,10 @@ void TechnicalIndicators::calculateAllIndicators(
 
 // Trader Implementation
 
-Trader::Trader(int trader_id, Strategy strat, double initial_cash)
+Trader::Trader(int trader_id, Strategy strat, double initial_cash, unsigned int seed)
     : id(trader_id), strategy(strat), cash(initial_cash),
       holdings(0), total_profit(0), trades_executed(0),
-      rng(std::random_device{}()),
+      rng(seed),
       last_rsi(50.0), last_macd(0.0), last_bollinger_upper(0.0), last_bollinger_lower(0.0)
 {
 }

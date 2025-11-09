@@ -3,8 +3,10 @@
 #include <vector>
 #include <fstream>
 #include <mutex>
+#include <memory>
 #include "order.hpp"
 #include "trader.hpp"
+
 
 class DataLogger
 {
@@ -30,7 +32,7 @@ public:
     ~DataLogger();
 
     // Initialize logger with MPI support
-    void initialize(bool use_mpi = false, int rank = 0, int size = 1);
+    void initialize(bool use_mpi = false, int rank = 0, int size = 1, int sim_index = -1);
 
     // Log trade data (CSV format)
     void logTrade(const ExecutedTrade &trade);
