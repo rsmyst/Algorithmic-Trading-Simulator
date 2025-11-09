@@ -587,6 +587,6 @@ std::string Trader::getStrategyName() const
     case Strategy::MULTI_INDICATOR:
         return "Multi-Indicator";
     default:
-        return "Unknown";
+        return "You";
     }
 }
