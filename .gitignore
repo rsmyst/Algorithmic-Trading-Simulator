@@ -3,3 +3,5 @@ build/*
 .github*
 *.csv
 old.txt
+*.json
+logs/*

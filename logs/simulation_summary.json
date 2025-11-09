@@ -1,8 +1,0 @@
-{
-  "simulation_log": {
-    "mpi_rank": 0,
-    "mpi_size": 1,
-    "log_directory": "logs",
-    "timestamp": "1762687353190318011"
-  }
-}

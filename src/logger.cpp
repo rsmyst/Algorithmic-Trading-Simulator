@@ -37,39 +37,63 @@ DataLogger::~DataLogger()
 
 void DataLogger::initialize(bool use_mpi, int rank, int size, int sim_index)
 {
-    mpi_enabled = use_mpi;
-    mpi_rank = rank;
-    mpi_size = size;
+    createDirectory(log_directory);
 
-    // Create log files with rank suffix if MPI is enabled
-    std::string rank_suffix = mpi_enabled ? "_rank" + std::to_string(mpi_rank) : "";
-    std::string sim_suffix = (sim_index >= 0) ? "_sim" + std::to_string(sim_index) : "";
+    std::lock_guard<std::mutex> lock(log_mutex);
 
-    trade_log.open(log_directory + "/trades" + rank_suffix + ".csv");
-    price_log.open(log_directory + "/prices" + rank_suffix + ".csv");
-    trader_stats_log.open(log_directory + "/trader_stats" + rank_suffix + ".csv");
-    order_book_log.open(log_directory + "/order_book" + rank_suffix + ".csv");
-
-    // Write CSV headers
-    if (trade_log.is_open())
+    auto flush_and_close = [](std::ofstream &stream, std::vector<std::string> &buffer)
     {
-        trade_log << "TradeID,Timestamp,BuyOrderID,SellOrderID,BuyerID,SellerID,Price,Quantity\n";
-    }
+        if (stream.is_open())
+        {
+            for (const auto &line : buffer)
+            {
+                stream << line;
+            }
+            stream.flush();
+            stream.close();
+        }
+        buffer.clear();
+    };
 
-    if (price_log.is_open())
-    {
-        price_log << "Timestamp,Price,Volume,BuyOrders,SellOrders\n";
-    }
+    flush_and_close(trade_log, trade_buffer);
+    flush_and_close(price_log, price_buffer);
 
     if (trader_stats_log.is_open())
     {
-        trader_stats_log << "Timestamp,TraderID,Strategy,Cash,Holdings,NetWorth,TotalProfit,TradesExecuted,RSI,MACD\n";
+        trader_stats_log.flush();
+        trader_stats_log.close();
     }
 
     if (order_book_log.is_open())
     {
-        order_book_log << "Timestamp,Side,Price,Quantity\n";
+        order_book_log.flush();
+        order_book_log.close();
     }
+
+    mpi_enabled = use_mpi;
+    mpi_rank = rank;
+    mpi_size = size;
+
+    const std::string sim_suffix = (sim_index >= 0) ? "_sim" + std::to_string(sim_index) : "";
+    const std::string rank_suffix = mpi_enabled ? "_rank" + std::to_string(mpi_rank) : "";
+
+    auto open_stream = [&](std::ofstream &stream, const std::string &base_name, const std::string &header)
+    {
+        const std::string filename = log_directory + "/" + base_name + sim_suffix + rank_suffix + ".csv";
+        stream.open(filename, std::ios::out | std::ios::trunc);
+        if (!stream.is_open())
+        {
+            std::cerr << "Failed to open log file: " << filename << std::endl;
+            return;
+        }
+        stream << header;
+        stream.flush();
+    };
+
+    open_stream(trade_log, "trades", "TradeID,Timestamp,BuyOrderID,SellOrderID,BuyerID,SellerID,Price,Quantity\n");
+    open_stream(price_log, "prices", "Timestamp,Price,Volume,BuyOrders,SellOrders\n");
+    open_stream(trader_stats_log, "trader_stats", "Timestamp,TraderID,Strategy,Cash,Holdings,NetWorth,TotalProfit,TradesExecuted,RSI,MACD\n");
+    open_stream(order_book_log, "order_book", "Timestamp,Side,Price,Quantity\n");
 }
 
 void DataLogger::createDirectory(const std::string &dir)
@@ -87,6 +111,9 @@ void DataLogger::createDirectory(const std::string &dir)
 void DataLogger::logTrade(const ExecutedTrade &trade)
 {
     std::lock_guard<std::mutex> lock(log_mutex);
+
+    if (!trade_log.is_open())
+        return;
 
     std::ostringstream ss;
     ss << trade.trade_id << ","
@@ -114,6 +141,9 @@ void DataLogger::logTrade(const ExecutedTrade &trade)
 void DataLogger::logPrice(double timestamp, double price, double volume, int buy_orders, int sell_orders)
 {
     std::lock_guard<std::mutex> lock(log_mutex);
+
+    if (!price_log.is_open())
+        return;
 
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(2) << timestamp << ","

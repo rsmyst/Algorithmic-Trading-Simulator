@@ -7,31 +7,42 @@
 
 TradingSimulation::TradingSimulation(int num_traders, double initial_price, double initial_cash, unsigned int seed)
     : market(initial_price), current_time(0.0), time_step(0.1),
-      mpi_enabled(false), mpi_rank(0), mpi_size(1)
+      base_seed(seed), mpi_enabled(false), mpi_rank(0), mpi_size(1)
 {
     // Create traders with different strategies
     for (int i = 0; i < num_traders; i++)
     {
         Strategy strat;
-        
-        if (i == 0) {
+
+        if (i == 0)
+        {
             strat = Strategy::HUMAN;
-        } else {
+        }
+        else
+        {
             int strategy_type = i % 9;
-            if (strategy_type == 0) strat = Strategy::MOMENTUM;
-            else if (strategy_type == 1) strat = Strategy::MEAN_REVERSION;
-            else if (strategy_type == 2) strat = Strategy::RANDOM;
-            else if (strategy_type == 3) strat = Strategy::RISK_AVERSE;
-            else if (strategy_type == 4) strat = Strategy::HIGH_RISK;
-            else if (strategy_type == 5) strat = Strategy::RSI_BASED;
-            else if (strategy_type == 6) strat = Strategy::MACD_BASED;
-            else if (strategy_type == 7) strat = Strategy::BOLLINGER;
-            else strat = Strategy::MULTI_INDICATOR;
+            if (strategy_type == 0)
+                strat = Strategy::MOMENTUM;
+            else if (strategy_type == 1)
+                strat = Strategy::MEAN_REVERSION;
+            else if (strategy_type == 2)
+                strat = Strategy::RANDOM;
+            else if (strategy_type == 3)
+                strat = Strategy::RISK_AVERSE;
+            else if (strategy_type == 4)
+                strat = Strategy::HIGH_RISK;
+            else if (strategy_type == 5)
+                strat = Strategy::RSI_BASED;
+            else if (strategy_type == 6)
+                strat = Strategy::MACD_BASED;
+            else if (strategy_type == 7)
+                strat = Strategy::BOLLINGER;
+            else
+                strat = Strategy::MULTI_INDICATOR;
         }
 
         unsigned int trader_seed = base_seed + i;
         traders.push_back(std::make_unique<Trader>(i, strat, initial_cash, trader_seed));
-
     }
 
     // Give half the traders initial holdings so they can sell
@@ -41,9 +52,6 @@ TradingSimulation::TradingSimulation(int num_traders, double initial_price, doub
     {
         traders[i]->setInitialHoldings(initial_holdings);
     }
-
-    // Initialize logger
-    logger.initialize(false, 0, 1);
 }
 
 void TradingSimulation::setTimeScale(double scale)
@@ -85,7 +93,8 @@ void TradingSimulation::step()
             // --- FIX FOR HUMAN PLAYER ---
             // The human player (Trader 0) is skipped.
             // Their orders are added via addHumanOrder()
-            if (traders[i]->getId() == 0) {
+            if (traders[i]->getId() == 0)
+            {
                 continue;
             }
             // --- END FIX ---
@@ -115,9 +124,8 @@ void TradingSimulation::step()
             }
         }
 
-
-// Combine results from all threads
-    #pragma omp critical
+        // Combine results from all threads
+#pragma omp critical
         {
             current_orders.insert(current_orders.end(), local_orders.begin(), local_orders.end());
             total_buy_quantity += local_buy;
@@ -138,12 +146,15 @@ void TradingSimulation::step()
     for (const auto &trade : executed_trades)
     {
         std::stringstream ss;
-        if (trade.buyer_id == 0) {
-            ss << "SUCCESS: Bought " << trade.quantity << " @ $" 
+        if (trade.buyer_id == 0)
+        {
+            ss << "SUCCESS: Bought " << trade.quantity << " @ $"
                << std::fixed << std::setprecision(2) << trade.price;
             last_human_trade_notification = ss.str();
-        } else if (trade.seller_id == 0) {
-            ss << "SUCCESS: Sold " << trade.quantity << " @ $" 
+        }
+        else if (trade.seller_id == 0)
+        {
+            ss << "SUCCESS: Sold " << trade.quantity << " @ $"
                << std::fixed << std::setprecision(2) << trade.price;
             last_human_trade_notification = ss.str();
         }
@@ -247,7 +258,6 @@ void TradingSimulation::addHumanOrder(Order order)
     order_book.addOrder(order);
 }
 
-
 SimulationStats TradingSimulation::runHeadless(double duration_seconds)
 {
     // Use a discrete number of steps based on time_scale
@@ -261,6 +271,5 @@ SimulationStats TradingSimulation::runHeadless(double duration_seconds)
 
     // When done, flush logs and return final stats
     logger.flush();
-    logger.exportToJSON("sim_summary_final.json"); // Or a unique name
     return getStats();
 }

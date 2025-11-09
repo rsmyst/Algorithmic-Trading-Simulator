@@ -65,30 +65,41 @@ Building the Project
 Quick Start (Windows)
 
 # Build
+
 build.bat
 
 # Run Interactive TUI Mode
+
 run.bat
 
 # Run with custom parameters (traders, duration, initial_price)
+
 run.bat 20 120 150.0
 
+# Run headless Ensemble via run.bat (add 6th arg = N sims)
+
+run.bat 20 120 150.0 10000 1.0 100
+
+# ^t ^d ^price ^cash ^speed ^ensemble_count
 
 Manual Build (Linux/macOS)
 
 # Create build directory
+
 mkdir build
 cd build
 
 # Configure with CMake (this will find OpenMP and MPI)
+
 cmake ..
 
 # Build in Release mode using all available cores
+
 cmake --build . --config Release -j
 
 # Run the TUI mode
-./bin/tradingSim
 
+./bin/tradingSim
 
 Usage
 
@@ -97,17 +108,16 @@ Command Line Options
 Usage: tradingSim [options]
 
 Options:
-  -t, --traders <num>     Number of trader agents (default: 12)
-  -d, --duration <sec>    Simulation duration in seconds (default: 60)
-  -p, --price <value>     Initial asset price (default: 170.0)
-  -c, --cash <value>      Initial cash per trader (default: 10000.0)
-  -s, --speed <scale>     Time scale multiplier for TUI mode (default: 1.0)
-  -h, --help              Show this help message
+-t, --traders [num] Number of trader agents (default: 12)
+-d, --duration [sec] Simulation duration in seconds (default: 60)
+-p, --price [value] Initial asset price (default: 170.0)
+-c, --cash [value] Initial cash per trader (default: 10000.0)
+-s, --speed [scale] Time scale multiplier for TUI mode (default: 1.0)
+-h, --help Show this help message
 
 Ensemble Mode Options:
-  -E, --ensemble <N>      Run N simulations headlessly (disables TUI)
-  --seed <S>              Base seed for ensemble runs (default: 12345)
-
+-E, --ensemble [N] Run N simulations headlessly (disables TUI)
+--seed [S] Base seed for ensemble runs (default: 12345)
 
 Running the Simulator
 
@@ -117,19 +127,17 @@ To run the standard simulation with the interactive dashboard, execute the progr
 
 ./bin/tradingSim -t 20 -d 120 -p 150.0
 
-
 Controls:
 
 Press 'q': Stop simulation and view final results.
 
 Human Player (Trader 0): Use the Price and Qty input boxes and the BUY / SELL buttons to place your own trades in real-time. Your performance is tracked in the "Human Control" panel.
 
-2. Ensemble (Headless) Mode
+1. Ensemble (Headless) Mode
 
 To run a statistical analysis, use mpiexec. This example runs 100 simulations across 4 processes:
 
 mpiexec -n 4 ./bin/tradingSim -E 100 --seed 42 -d 30
-
 
 This will not show a TUI. It will print status messages to the console and end with an "Ensemble Summary" of the aggregated results from all 100 runs.
 
@@ -157,24 +165,23 @@ Project Structure
 
 Algorithmic-Trading-Simulator/
 ├── include/
-│   ├── trader.hpp          # Trader agents & technical indicators
-│   ├── market.hpp          # Market simulation & dynamics
-│   ├── order_book.hpp      # Limit order book & matching engine
-│   ├── logger.hpp          # Data logging system
-│   └── simulation.hpp      # Main simulation controller
+│ ├── trader.hpp # Trader agents & technical indicators
+│ ├── market.hpp # Market simulation & dynamics
+│ ├── order_book.hpp # Limit order book & matching engine
+│ ├── logger.hpp # Data logging system
+│ └── simulation.hpp # Main simulation controller
 ├── src/
-│   ├── main.cpp            # Main entry, TUI, and MPI logic
-│   ├── trader.cpp          # Trader & indicator implementation
-│   ├── market.cpp          # Market implementation
-│   ├── order_book.cpp      # Order book implementation
-│   ├── logger.cpp          # Logging implementation
-│   └── simulation.cpp      # Simulation `step()` implementation
-├── logs/                   # Generated during simulation
-├── CMakeLists.txt          # CMake configuration
-├── build.bat               # Windows build script
-├── run.bat                 # Windows run script
+│ ├── main.cpp # Main entry, TUI, and MPI logic
+│ ├── trader.cpp # Trader & indicator implementation
+│ ├── market.cpp # Market implementation
+│ ├── order_book.cpp # Order book implementation
+│ ├── logger.cpp # Logging implementation
+│ └── simulation.cpp # Simulation `step()` implementation
+├── logs/ # Generated during simulation
+├── CMakeLists.txt # CMake configuration
+├── build.bat # Windows build script
+├── run.bat # Windows run script
 └── README.md
-
 
 How It Works
 

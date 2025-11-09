@@ -14,7 +14,10 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
-#include <mpi.h> 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+#include <mpi.h>
 #include <omp.h>
 
 #include "../include/simulation.hpp"
@@ -22,7 +25,8 @@
 using namespace ftxui;
 
 // --- (Config struct, printHelp, parseArguments are IDENTICAL to Part 1) ---
-struct Config {
+struct Config
+{
     int num_traders = 12;
     double initial_price = 170.0;
     double initial_cash = 10000.0;
@@ -32,7 +36,15 @@ struct Config {
     int ensemble_count = 0;
     unsigned int base_seed = 12345;
 };
-void printHelp() {
+struct SimulationSummaryPacket
+{
+    int simulation_index = -1;
+    SimulationStats stats{};
+};
+
+static_assert(std::is_trivially_copyable_v<SimulationSummaryPacket>, "SimulationSummaryPacket must be trivially copyable for MPI transfers.");
+void printHelp()
+{
     std::cout << "Algorithmic Trading Simulator\n\n";
     std::cout << "Usage: tradingSim [options]\n\n";
     std::cout << "Standard TUI Mode (default):\n";
@@ -50,32 +62,50 @@ void printHelp() {
     std::cout << "Example (Ensemble):\n";
     std::cout << "  mpiexec -n 4 ./tradingSim -E 100 --seed 42\n\n";
 }
-Config parseArguments(int argc, char *argv[]) {
+Config parseArguments(int argc, char *argv[])
+{
     Config config;
-    for (int i = 1; i < argc; i++) {
+    for (int i = 1; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg == "-h" || arg == "--help") {
-            config.show_help = true; return config;
-        } else if ((arg == "-t" || arg == "--traders") && i + 1 < argc) {
+        if (arg == "-h" || arg == "--help")
+        {
+            config.show_help = true;
+            return config;
+        }
+        else if ((arg == "-t" || arg == "--traders") && i + 1 < argc)
+        {
             config.num_traders = std::stoi(argv[++i]);
-        } else if ((arg == "-d" || arg == "--duration") && i + 1 < argc) {
+        }
+        else if ((arg == "-d" || arg == "--duration") && i + 1 < argc)
+        {
             config.duration_seconds = std::stoi(argv[++i]);
-        } else if ((arg == "-p" || arg == "--price") && i + 1 < argc) {
+        }
+        else if ((arg == "-p" || arg == "--price") && i + 1 < argc)
+        {
             config.initial_price = std::stod(argv[++i]);
-        } else if ((arg == "-c" || arg == "--cash") && i + 1 < argc) {
+        }
+        else if ((arg == "-c" || arg == "--cash") && i + 1 < argc)
+        {
             config.initial_cash = std::stod(argv[++i]);
-        } else if ((arg == "-s" || arg == "--speed") && i + 1 < argc) {
+        }
+        else if ((arg == "-s" || arg == "--speed") && i + 1 < argc)
+        {
             config.time_scale = std::stod(argv[++i]);
-            if (config.time_scale <= 0.0) config.time_scale = 1.0;
-        } else if ((arg == "-E" || arg == "--ensemble") && i + 1 < argc) {
+            if (config.time_scale <= 0.0)
+                config.time_scale = 1.0;
+        }
+        else if ((arg == "-E" || arg == "--ensemble") && i + 1 < argc)
+        {
             config.ensemble_count = std::stoi(argv[++i]);
-        } else if ((arg == "--seed") && i + 1 < argc) {
+        }
+        else if ((arg == "--seed") && i + 1 < argc)
+        {
             config.base_seed = std::stoul(argv[++i]);
         }
     }
     return config;
 }
-
 
 // --- 4. Main Function ---
 int main(int argc, char *argv[])
@@ -88,8 +118,10 @@ int main(int argc, char *argv[])
 
     Config config = parseArguments(argc, argv);
 
-    if (config.show_help) {
-        if (mpi_rank == 0) printHelp();
+    if (config.show_help)
+    {
+        if (mpi_rank == 0)
+            printHelp();
         MPI_Finalize();
         return 0;
     }
@@ -104,42 +136,202 @@ int main(int argc, char *argv[])
         int extra_sims = n % mpi_size;
         int sims_for_this_rank = base_sims + (mpi_rank < extra_sims ? 1 : 0);
         int start_index = (mpi_rank * base_sims) + std::min(mpi_rank, extra_sims);
-        if (mpi_rank == 0) {
-            std::cout << "=== Running Ensemble Mode ===\n" << "Total Simulations: " << n << "\n"
-                      << "MPI Processes: " << mpi_size << "\n" << "----------------------------------\n";
+        if (mpi_rank == 0)
+        {
+            std::cout << "=== Running Ensemble Mode ===\n"
+                      << "Total Simulations: " << n << "\n"
+                      << "MPI Processes: " << mpi_size << "\n"
+                      << "----------------------------------\n";
         }
-        long long local_total_trades = 0;
-        double local_total_volume = 0.0;
-        double local_sum_avg_price = 0.0;
-        for (int i = 0; i < sims_for_this_rank; i++) {
+        // Local storage for simulation results
+        std::vector<SimulationSummaryPacket> local_results;
+        local_results.reserve(sims_for_this_rank);
+
+        for (int i = 0; i < sims_for_this_rank; i++)
+        {
             int global_sim_index = start_index + i;
             unsigned int sim_seed = config.base_seed + global_sim_index;
             std::cout << "[Rank " << mpi_rank << "] Starting sim " << global_sim_index << " (seed " << sim_seed << ")..." << std::endl;
+
             TradingSimulation sim(config.num_traders, config.initial_price, config.initial_cash, sim_seed);
             sim.setTimeScale(config.time_scale);
             sim.getLogger().initialize(true, mpi_rank, mpi_size, global_sim_index);
             SimulationStats stats = sim.runHeadless(config.duration_seconds);
-            local_total_trades += stats.total_trades;
-            local_total_volume += stats.total_volume;
-            local_sum_avg_price += stats.avg_price;
-            std::cout << "[Rank " << mpi_rank << "] Finished sim " << global_sim_index << " (Trades: " << stats.total_trades << ")" << std::endl;
+
+            SimulationSummaryPacket packet;
+            packet.simulation_index = global_sim_index;
+            packet.stats = stats;
+            local_results.push_back(packet);
+
+            std::cout << "[Rank " << mpi_rank << "] Finished sim " << global_sim_index
+                      << " (Trades: " << stats.total_trades
+                      << ", Volume: $" << std::fixed << std::setprecision(2) << stats.total_volume << ")" << std::endl;
         }
-        long long global_total_trades = 0;
-        double global_total_volume = 0.0;
-        double global_sum_avg_price = 0.0;
-        MPI_Reduce(&local_total_trades, &global_total_trades, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&local_total_volume, &global_total_volume, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&local_sum_avg_price, &global_sum_avg_price, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-        if (mpi_rank == 0) {
-            std::cout << "\n=== Ensemble Summary ===\n" << std::endl;
-            std::cout << "Total Simulations Ran: " << config.ensemble_count << std::endl;
-            std::cout << "Grand Total Trades: " << global_total_trades << std::endl;
-            std::cout << "Grand Total Volume: $" << std::fixed << std::setprecision(2) << global_total_volume << std::endl;
-            std::cout << "----------------------------------\n";
-            std::cout << "Average Trades per Sim: " << (double)global_total_trades / config.ensemble_count << std::endl;
-            std::cout << "Average Volume per Sim: $" << (double)global_total_volume / config.ensemble_count << std::endl;
-            std::cout << "Ensemble Avg. Price: $" << (double)global_sum_avg_price / config.ensemble_count << std::endl;
-            std::cout << "\nEnsemble run complete. Logs saved to 'logs/' directory.\n";
+
+        // Gather all results to rank 0
+        std::vector<int> recv_counts(mpi_size);
+        std::vector<int> displs(mpi_size);
+        int local_count = static_cast<int>(local_results.size());
+
+        MPI_Gather(&local_count, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+        std::vector<SimulationSummaryPacket> all_results;
+        if (mpi_rank == 0)
+        {
+            int total_results = 0;
+            for (int i = 0; i < mpi_size; i++)
+            {
+                displs[i] = total_results;
+                total_results += recv_counts[i];
+            }
+            all_results.resize(total_results);
+        }
+
+        // Calculate byte counts and displacements for MPI_Gatherv
+        constexpr int packet_size = sizeof(SimulationSummaryPacket);
+        std::vector<int> byte_recv_counts(mpi_size);
+        std::vector<int> byte_displs(mpi_size);
+
+        if (mpi_rank == 0)
+        {
+            for (int i = 0; i < mpi_size; i++)
+            {
+                byte_recv_counts[i] = recv_counts[i] * packet_size;
+                byte_displs[i] = displs[i] * packet_size;
+            }
+        }
+
+        MPI_Gatherv(local_results.data(), local_count * packet_size, MPI_BYTE,
+                    all_results.data(), byte_recv_counts.data(), byte_displs.data(), MPI_BYTE,
+                    0, MPI_COMM_WORLD);
+
+        if (mpi_rank == 0)
+        {
+            // Calculate comprehensive statistics
+            long long total_trades = 0;
+            double total_volume = 0.0;
+            double sum_avg_price = 0.0;
+            double sum_volatility = 0.0;
+
+            int best_sim_idx = -1;
+            int worst_sim_idx = -1;
+            double best_volume = -std::numeric_limits<double>::infinity();
+            double worst_volume = std::numeric_limits<double>::infinity();
+
+            std::vector<int> trade_counts;
+            std::vector<double> volumes;
+            std::vector<double> avg_prices;
+            std::vector<double> volatilities;
+
+            for (const auto &packet : all_results)
+            {
+                total_trades += packet.stats.total_trades;
+                total_volume += packet.stats.total_volume;
+                sum_avg_price += packet.stats.avg_price;
+                sum_volatility += packet.stats.price_volatility;
+
+                trade_counts.push_back(packet.stats.total_trades);
+                volumes.push_back(packet.stats.total_volume);
+                avg_prices.push_back(packet.stats.avg_price);
+                volatilities.push_back(packet.stats.price_volatility);
+
+                if (packet.stats.total_volume > best_volume)
+                {
+                    best_volume = packet.stats.total_volume;
+                    best_sim_idx = packet.simulation_index;
+                }
+                if (packet.stats.total_volume < worst_volume)
+                {
+                    worst_volume = packet.stats.total_volume;
+                    worst_sim_idx = packet.simulation_index;
+                }
+            }
+
+            int n_sims = static_cast<int>(all_results.size());
+            double avg_trades_per_sim = static_cast<double>(total_trades) / n_sims;
+            double avg_volume_per_sim = total_volume / n_sims;
+            double avg_price = sum_avg_price / n_sims;
+            double avg_volatility = sum_volatility / n_sims;
+
+            // Calculate standard deviations
+            auto calc_stddev = [n_sims](const std::vector<double> &values, double mean)
+            {
+                double sum_sq = 0.0;
+                for (double v : values)
+                {
+                    double diff = v - mean;
+                    sum_sq += diff * diff;
+                }
+                return std::sqrt(sum_sq / n_sims);
+            };
+
+            double stddev_volume = calc_stddev(volumes, avg_volume_per_sim);
+            double stddev_trades = 0.0;
+            {
+                double sum_sq = 0.0;
+                for (int tc : trade_counts)
+                {
+                    double diff = tc - avg_trades_per_sim;
+                    sum_sq += diff * diff;
+                }
+                stddev_trades = std::sqrt(sum_sq / n_sims);
+            }
+
+            std::cout << "\n=======================================================\n";
+            std::cout << "              ENSEMBLE SUMMARY STATISTICS             \n";
+            std::cout << "=======================================================\n\n";
+
+            std::cout << "Total Simulations: " << config.ensemble_count << "\n";
+            std::cout << "MPI Processes Used: " << mpi_size << "\n\n";
+
+            std::cout << "--- AGGREGATE METRICS ---\n";
+            std::cout << "Grand Total Trades: " << total_trades << "\n";
+            std::cout << "Grand Total Volume: $" << std::fixed << std::setprecision(2) << total_volume << "\n\n";
+
+            std::cout << "--- AVERAGE PER SIMULATION ---\n";
+            std::cout << "Avg Trades: " << std::fixed << std::setprecision(2) << avg_trades_per_sim
+                      << " (±" << stddev_trades << ")\n";
+            std::cout << "Avg Volume: $" << avg_volume_per_sim
+                      << " (±$" << stddev_volume << ")\n";
+            std::cout << "Avg Price: $" << avg_price << "\n";
+            std::cout << "Avg Volatility: $" << avg_volatility << "\n\n";
+
+            std::cout << "--- BEST SIMULATION ---\n";
+            std::cout << "Sim Index: " << best_sim_idx << "\n";
+            std::cout << "Volume: $" << best_volume << "\n";
+            for (const auto &packet : all_results)
+            {
+                if (packet.simulation_index == best_sim_idx)
+                {
+                    std::cout << "Trades: " << packet.stats.total_trades << "\n";
+                    std::cout << "Avg Price: $" << packet.stats.avg_price << "\n";
+                    std::cout << "Volatility: $" << packet.stats.price_volatility << "\n";
+                    break;
+                }
+            }
+
+            std::cout << "\n--- WORST SIMULATION ---\n";
+            std::cout << "Sim Index: " << worst_sim_idx << "\n";
+            std::cout << "Volume: $" << worst_volume << "\n";
+            for (const auto &packet : all_results)
+            {
+                if (packet.simulation_index == worst_sim_idx)
+                {
+                    std::cout << "Trades: " << packet.stats.total_trades << "\n";
+                    std::cout << "Avg Price: $" << packet.stats.avg_price << "\n";
+                    std::cout << "Volatility: $" << packet.stats.price_volatility << "\n";
+                    break;
+                }
+            }
+
+            std::cout << "\n=======================================================\n";
+            std::cout << "Ensemble run complete. CSV logs saved to 'logs/' directory.\n";
+            std::cout << "Each simulation has separate CSV files with naming pattern:\n";
+            std::cout << "  trades_sim<N>_rank<R>.csv\n";
+            std::cout << "  prices_sim<N>_rank<R>.csv\n";
+            std::cout << "  trader_stats_sim<N>_rank<R>.csv\n";
+            std::cout << "  order_book_sim<N>_rank<R>.csv\n";
+            std::cout << "=======================================================\n";
         }
     }
     else
@@ -147,8 +339,8 @@ int main(int argc, char *argv[])
         // ==================================
         // === 2. INTERACTIVE TUI MODE ===
         // ==================================
-        
-        if (mpi_rank == 0) 
+
+        if (mpi_rank == 0)
         {
             TradingSimulation simulation(config.num_traders, config.initial_price, config.initial_cash, config.base_seed);
             simulation.setTimeScale(config.time_scale);
@@ -159,7 +351,7 @@ int main(int argc, char *argv[])
             bool running = true;
             auto start_time = std::chrono::steady_clock::now();
             auto last_update = std::chrono::steady_clock::now();
-            
+
             // --- NEW: State for Human Trader ---
             std::string human_price_str = std::to_string(static_cast<int>(config.initial_price));
             std::string human_qty_str = "10";
@@ -169,14 +361,17 @@ int main(int argc, char *argv[])
             // --- NEW: UI Components for Human ---
             Component price_input = Input(&human_price_str, "Price");
             Component qty_input = Input(&human_qty_str, "Qty");
-            
-            auto human_trade_action = [&](OrderType type) {
-                try {
+
+            auto human_trade_action = [&](OrderType type)
+            {
+                try
+                {
                     double price = std::stod(human_price_str);
                     int qty = std::stoi(human_qty_str);
                     int trader_id = std::stoi(human_trader_id);
-                    
-                    if (qty <= 0) {
+
+                    if (qty <= 0)
+                    {
                         last_action_msg = "Error: Qty must be > 0";
                         return;
                     }
@@ -186,38 +381,40 @@ int main(int argc, char *argv[])
 
                     Order human_order(0, trader_id, type, price, qty, timestamp);
                     simulation.addHumanOrder(human_order); // Inject the order
-                    
+
                     last_action_msg = (type == OrderType::BUY ? "BUY" : "SELL");
                     last_action_msg += " order for " + human_qty_str + " @ $" + human_price_str + " sent!";
-
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception &e)
+                {
                     last_action_msg = "Error: Invalid price or qty";
                 }
             };
 
-            Component buy_button = Button("  BUY  ", [&]() { human_trade_action(OrderType::BUY); }, ButtonOption::Animated(Color::Green));
-            Component sell_button = Button("  SELL  ", [&]() { human_trade_action(OrderType::SELL); }, ButtonOption::Animated(Color::Red));
+            Component buy_button = Button("  BUY  ", [&]()
+                                          { human_trade_action(OrderType::BUY); }, ButtonOption::Animated(Color::Green));
+            Component sell_button = Button("  SELL  ", [&]()
+                                           { human_trade_action(OrderType::SELL); }, ButtonOption::Animated(Color::Red));
 
             // --- NEW: Add components to a container for focus ---
-            auto main_container = Container::Vertical({
-                price_input,
-                qty_input,
-                buy_button,
-                sell_button
-            });
+            auto main_container = Container::Vertical({price_input,
+                                                       qty_input,
+                                                       buy_button,
+                                                       sell_button});
 
             // Handle 'q' to quit
-            main_container |= CatchEvent([&](Event event) {
+            main_container |= CatchEvent([&](Event event)
+                                         {
                 if (event == Event::Character('q') || event == Event::Character('Q')) {
                     running = false;
                     screen.ExitLoopClosure()();
                     return true;
                 }
-                return false; 
-            });
+                return false; });
 
             // Create renderer
-            auto renderer = Renderer(main_container, [&] {
+            auto renderer = Renderer(main_container, [&]
+                                     {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
                 
@@ -427,21 +624,21 @@ int main(int argc, char *argv[])
                     })
                 );
                 
-                return vbox(std::move(elements)) | border; 
-            });
+                return vbox(std::move(elements)) | border; });
 
             // Refresh thread
-            std::thread refresh_thread([&] {
+            std::thread refresh_thread([&]
+                                       {
                 while (running) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     screen.Post(Event::Custom);
-                } 
-            });
+                } });
 
             screen.Loop(renderer);
 
             running = false;
-            if (refresh_thread.joinable()) {
+            if (refresh_thread.joinable())
+            {
                 refresh_thread.join();
             }
 
@@ -452,15 +649,17 @@ int main(int argc, char *argv[])
             std::cout << "Total Trades: " << stats.total_trades << "\n";
             std::cout << "Total Volume: $" << std::fixed << std::setprecision(2) << stats.total_volume << "\n";
             simulation.getLogger().flush();
-            simulation.getLogger().exportToJSON("simulation_summary.json");
-            std::cout << "Logs saved to 'logs' directory and 'simulation_summary.json'\n\n";
+            std::cout << "Logs saved to 'logs' directory.\n\n";
             const auto &traders = simulation.getTraders();
             std::vector<const Trader *> final_traders;
-            for (const auto &trader : traders) final_traders.push_back(trader.get());
+            for (const auto &trader : traders)
+                final_traders.push_back(trader.get());
             double final_price = simulation.getMarket().getCurrentPrice();
-            std::sort(final_traders.begin(), final_traders.end(), [](const Trader *a, const Trader *b) { return a->getId() < b->getId(); });
+            std::sort(final_traders.begin(), final_traders.end(), [](const Trader *a, const Trader *b)
+                      { return a->getId() < b->getId(); });
             std::cout << "=== Final Trader Rankings (By ID) ===\n\n";
-            for (const auto *t : final_traders) {
+            for (const auto *t : final_traders)
+            {
                 double net_worth = t->getNetWorth(final_price);
                 double profit = net_worth - config.initial_cash;
                 std::cout << "Trader " << t->getId() << " [" << t->getStrategyName() << "]\n";
